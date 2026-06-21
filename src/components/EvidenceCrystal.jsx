@@ -7,13 +7,13 @@ const COLORS = {
 };
 
 export default function EvidenceCrystal({ id, position, inspected, onInspect, active }) {
-  const meshRef = useRef();
-  const baseY = position[1];
+  const groupRef = useRef();
 
   useFrame((state) => {
-    if (!meshRef.current) return;
-    meshRef.current.rotation.y += 0.012;
-    meshRef.current.position.y = baseY + Math.sin(state.clock.elapsedTime * 2 + position[0]) * 0.15;
+    if (!groupRef.current) return;
+    groupRef.current.rotation.y += 0.025;
+    groupRef.current.position.y =
+      position[1] + Math.sin(state.clock.elapsedTime * 2 + position[0]) * 0.12;
   });
 
   if (!active) return null;
@@ -21,31 +21,33 @@ export default function EvidenceCrystal({ id, position, inspected, onInspect, ac
   const color = inspected ? COLORS.inspected : COLORS.default;
 
   return (
-    <mesh
-      ref={meshRef}
-      position={position}
-      onClick={(e) => {
-        e.stopPropagation();
-        if (!inspected) onInspect(id);
-      }}
-      onPointerOver={(e) => {
-        e.stopPropagation();
-        document.body.style.cursor = inspected ? 'default' : 'pointer';
-      }}
-      onPointerOut={() => {
-        document.body.style.cursor = 'default';
-      }}
-    >
-      {/* TODO: particle burst on inspect, SFX hook */}
-      <octahedronGeometry args={[0.45, 0]} />
-      <meshStandardMaterial
-        color={color}
-        emissive={color}
-        emissiveIntensity={inspected ? 1.2 : 0.6}
-        transparent
-        opacity={inspected ? 0.85 : 1}
-      />
-      <pointLight color={color} intensity={inspected ? 0.8 : 0.4} distance={3} />
-    </mesh>
+    <group ref={groupRef} position={[position[0], position[1], position[2]]} frustumCulled={false}>
+      <mesh
+        frustumCulled={false}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (!inspected) onInspect(id);
+        }}
+        onPointerOver={(e) => {
+          e.stopPropagation();
+          document.body.style.cursor = inspected ? 'default' : 'pointer';
+        }}
+        onPointerOut={() => {
+          document.body.style.cursor = 'default';
+        }}
+      >
+        <octahedronGeometry args={[0.55, 0]} />
+        <meshBasicMaterial color={color} toneMapped={false} />
+      </mesh>
+      <mesh frustumCulled={false} scale={1.25}>
+        <octahedronGeometry args={[0.55, 0]} />
+        <meshBasicMaterial color={color} wireframe transparent opacity={0.5} toneMapped={false} />
+      </mesh>
+      <mesh frustumCulled={false} scale={1.6}>
+        <octahedronGeometry args={[0.55, 0]} />
+        <meshBasicMaterial color={color} transparent opacity={0.12} toneMapped={false} />
+      </mesh>
+      <pointLight color={color} intensity={4} distance={6} decay={1} />
+    </group>
   );
 }

@@ -46,7 +46,7 @@ function Panel({ title, children, actions }) {
   );
 }
 
-export default function HUD({ state, dispatch, round, onAdvance, onFinalChoice }) {
+export default function HUD({ state, dispatch, round, onAdvance, onFinalChoice, onThrowCard }) {
   const { phase, playerSide, opponentSide, metrics, inspectedEvidenceIds, roundIndex } = state;
 
   const opponent = CHARACTERS[opponentSide];
@@ -59,7 +59,7 @@ export default function HUD({ state, dispatch, round, onAdvance, onFinalChoice }
       <div className="hud-overlay">
         <MetricBars metrics={metrics} />
         <Panel title="Choose Your Side">
-          <p className="hud-text">Pick a side to enter the debate arena.</p>
+          <p className="hud-text">Pick a side — you'll face your opponent across the arena in first person.</p>
           <div className="side-buttons">
             <button
               type="button"
@@ -129,7 +129,7 @@ export default function HUD({ state, dispatch, round, onAdvance, onFinalChoice }
   }
 
   const panelWrapperClass = ['evidence', 'argument', 'throwAnim'].includes(phase)
-    ? 'hud-panel-bottom'
+    ? 'hud-panel-side'
     : 'hud-panel-center';
 
   return (
@@ -186,7 +186,23 @@ export default function HUD({ state, dispatch, round, onAdvance, onFinalChoice }
         <Panel
           title="Throw an Argument Card"
           actions={
-            <p className="hud-hint">Click the unlocked card in the arena to throw it at your opponent.</p>
+            <>
+              {round.argumentCards.map((card) => {
+                const required = card.requiresEvidenceIds || round.evidence.map((e) => e.id);
+                const unlocked = required.every((id) => inspectedEvidenceIds.includes(id));
+                return unlocked ? (
+                  <button
+                    key={card.id}
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => onThrowCard(card)}
+                  >
+                    Throw: {card.text}
+                  </button>
+                ) : null;
+              })}
+              <p className="hud-hint">Or click the yellow card floating in the arena.</p>
+            </>
           }
         >
           <p className="hud-text muted">

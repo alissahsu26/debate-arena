@@ -1,20 +1,19 @@
-import { OrbitControls } from '@react-three/drei';
 import Character from './Character';
 import EvidenceCrystal from './EvidenceCrystal';
 import ArgumentCard from './ArgumentCard';
+import FirstPersonCamera from './FirstPersonCamera';
 
 const CRYSTAL_POSITIONS = [
-  [-1.5, 1.5, 2.5],
-  [0, 1.8, 0],
-  [1.5, 1.5, -2.5],
+  [-1.5, 1.35, -1.9],
+  [0, 1.55, -2.4],
+  [1.5, 1.35, -1.9],
 ];
 
-const PLAYER_POSITION = [-3, 0, 0];
-const OPPONENT_POSITION = [3, 0, 0];
-const CARD_POSITION = [-2.2, 2, 0.5];
+const OPPONENT_POSITION = [0, 0, -3.5];
+const OPPONENT_ROTATION = [0, Math.PI, 0];
+const CARD_POSITION = [0.85, 1.0, -0.7];
 
 export default function Arena({
-  playerSide,
   opponentSide,
   round,
   phase,
@@ -37,30 +36,35 @@ export default function Arena({
   return (
     <>
       <color attach="background" args={['#1a1a2e']} />
-      <fog attach="fog" args={['#1a1a2e', 15, 35]} />
+      <fog attach="fog" args={['#1a1a2e', 14, 30]} />
 
-      <ambientLight intensity={0.4} />
-      <directionalLight position={[5, 10, 5]} intensity={1.2} castShadow />
-      <pointLight position={[0, 5, 0]} intensity={0.5} color="#ffffff" />
+      <ambientLight intensity={0.65} />
+      <hemisphereLight args={['#6a7ab8', '#1a1a2e', 0.5]} />
+      <directionalLight position={[2, 8, 4]} intensity={1.4} />
+      <pointLight position={[0, 2.5, -3.5]} intensity={2.5} color="#c8b8ff" distance={12} />
+      <pointLight position={[0, 1.5, -1]} intensity={0.8} color="#88ccff" distance={8} />
 
-      {/* Circular platform */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow position={[0, -0.05, 0]}>
-        <cylinderGeometry args={[8, 8, 0.2, 48]} />
-        <meshStandardMaterial color="#2d3561" />
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, -1.5]}>
+        <planeGeometry args={[14, 10]} />
+        <meshBasicMaterial color="#2d3561" toneMapped={false} />
       </mesh>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]}>
-        <ringGeometry args={[7.5, 8, 48]} />
-        <meshBasicMaterial color="#4A90D9" transparent opacity={0.4} />
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, -1.5]}>
+        <ringGeometry args={[0.4, 5.5, 48]} />
+        <meshBasicMaterial color="#4A90D9" transparent opacity={0.35} toneMapped={false} />
       </mesh>
 
-      <Character type={playerSide} position={PLAYER_POSITION} isPlayer />
-      <Character type={opponentSide} position={OPPONENT_POSITION} />
+      <Character
+        type={opponentSide}
+        position={OPPONENT_POSITION}
+        rotation={OPPONENT_ROTATION}
+        scale={1.35}
+      />
 
       {round.evidence.map((item, index) => (
         <EvidenceCrystal
           key={item.id}
           id={item.id}
-          position={CRYSTAL_POSITIONS[index] || [0, 1.5, 0]}
+          position={CRYSTAL_POSITIONS[index] || [0, 1.5, -2]}
           inspected={inspectedEvidenceIds.includes(item.id)}
           onInspect={onInspectEvidence}
           active={showCrystals}
@@ -81,14 +85,7 @@ export default function Arena({
         />
       ))}
 
-      <OrbitControls
-        enablePan={false}
-        minPolarAngle={Math.PI / 6}
-        maxPolarAngle={Math.PI / 2.2}
-        minDistance={8}
-        maxDistance={18}
-        target={[0, 1, 0]}
-      />
+      <FirstPersonCamera />
     </>
   );
 }

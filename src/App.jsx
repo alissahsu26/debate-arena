@@ -252,7 +252,7 @@ export default function App() {
   return (
     <div className="app-root">
       {showArena && state.playerSide && (
-        <Canvas shadows camera={{ position: [0, 8, 12], fov: 50 }}>
+        <Canvas camera={{ position: [0, 1.55, 0.8], fov: 70, near: 0.1, far: 50 }}>
           <Arena
             playerSide={state.playerSide}
             opponentSide={state.opponentSide}
@@ -279,6 +279,8 @@ export default function App() {
       />
 
       <CombatTextLayer texts={state.combatTexts} onRemove={handleRemoveCombatText} />
+
+      {showArena && <div className="fp-crosshair" aria-hidden="true" />}
     </div>
   );
 }
