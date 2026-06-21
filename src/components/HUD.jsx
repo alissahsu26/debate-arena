@@ -17,28 +17,6 @@ import EvidenceQuiz from './EvidenceQuiz';
 import ThrowTimingBar from './ThrowTimingBar';
 import AudienceMeter from './AudienceMeter';
 
-const PHASES_WITH_HUD_OPPONENT_BADGE = new Set([
-  'buildCase',
-  'battle',
-  'roundComplete',
-  'debateResult',
-]);
-
-function OpponentBadge({ opponentSide }) {
-  const opponent = CHARACTERS[opponentSide];
-  if (!opponent) return null;
-
-  return (
-    <div className={`opponent-hud-badge pkmn-name-bar pkmn-name-bar--${opponentSide}`}>
-      <div className="pkmn-name-bar-stripe" aria-hidden="true" />
-      <div className="pkmn-name-bar-body">
-        <span className="pkmn-name-bar-name">{opponent.label}</span>
-        <span className="pkmn-name-bar-side">{opponent.side}</span>
-      </div>
-    </div>
-  );
-}
-
 function Panel({ title, children, actions }) {
   return (
     <div className="rpg-box hud-rpg-panel">
@@ -102,7 +80,6 @@ export default function HUD({
         <div className="audience-meter-wrap audience-meter-wrap--centered">
           <AudienceMeter score={audienceScore} />
         </div>
-        <OpponentBadge opponentSide={opponentSide} />
         <div className="hud-panel-center">
           <Panel
             title={outcome.label}
@@ -138,10 +115,6 @@ export default function HUD({
         Round {roundIndex + 1} of {debateRounds.length}
         {exchangePhase === 'counter' && ' — Counter'}
       </div>
-
-      {PHASES_WITH_HUD_OPPONENT_BADGE.has(phase) && (
-        <OpponentBadge opponentSide={opponentSide} />
-      )}
 
       {phase === 'firstAttack' && (
         <BattleDialog

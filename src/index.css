@@ -1620,12 +1620,32 @@ body,
   margin-top: 2px;
 }
 
-.opponent-hud-badge {
-  pointer-events: none;
+.demo-skip-btn {
   position: fixed;
-  top: 88px;
-  left: 16px;
-  z-index: 22;
+  bottom: 16px;
+  right: 16px;
+  z-index: 30;
+  pointer-events: auto;
+  font-family: 'VT323', 'Courier New', monospace;
+  font-size: 16px;
+  line-height: 1;
+  color: #383838;
+  background: #f8f8f8;
+  border: 2px solid #404040;
+  padding: 8px 14px;
+  cursor: pointer;
+  box-shadow: 2px 2px 0 #606060;
+  -webkit-font-smoothing: none;
+  font-smooth: never;
+}
+
+.demo-skip-btn:hover {
+  background: #ffffff;
+}
+
+.demo-skip-btn:active {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 #606060;
 }
 
 /* Pokemon-style crystal materialization reveal */

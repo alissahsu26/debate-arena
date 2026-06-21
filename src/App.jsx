@@ -106,6 +106,24 @@ function gameReducer(state, action) {
     case 'PLAY_AGAIN':
       return { ...initialState };
 
+    case 'SKIP_TO_END': {
+      const playerSide = state.playerSide ?? 'mastery';
+      const opponentSide = playerSide === 'carnegie' ? 'mastery' : 'carnegie';
+      return {
+        ...state,
+        playerSide,
+        opponentSide,
+        phase: 'debateResult',
+        roundIndex: debateRounds.length - 1,
+        isThrowingCrystals: false,
+        isSearching: false,
+        activeQuiz: null,
+        pendingEvidenceReveal: null,
+        explodingEvidenceId: null,
+        launchPayload: null,
+      };
+    }
+
     case 'SELECT_SIDE': {
       const playerSide = action.side;
       const opponentSide = playerSide === 'carnegie' ? 'mastery' : 'carnegie';
@@ -397,6 +415,10 @@ export default function App() {
     dispatch({ type: 'PLAY_AGAIN' });
   }, []);
 
+  const handleSkipToEnd = useCallback(() => {
+    dispatch({ type: 'SKIP_TO_END' });
+  }, []);
+
   const handleDismissEvidenceReveal = useCallback(() => {
     dispatch({ type: 'DISMISS_EVIDENCE_REVEAL' });
   }, []);
@@ -513,6 +535,12 @@ export default function App() {
 
       {showArena && ['battle', 'launchCrystals', 'throwAnim'].includes(state.phase) && (
         <div className="fp-crosshair" aria-hidden="true" />
+      )}
+
+      {state.phase !== 'debateResult' && (
+        <button type="button" className="demo-skip-btn" onClick={handleSkipToEnd}>
+          Skip to End
+        </button>
       )}
     </div>
   );

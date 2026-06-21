@@ -151,21 +151,23 @@ function CharacterInner({
 
       <pointLight position={[0, 2.5, 2]} intensity={3} color="#ffffff" distance={14} />
 
-      <Html
-        center
-        distanceFactor={6}
-        position={[0, labelY, 0]}
-        style={{ pointerEvents: 'none', userSelect: 'none' }}
-      >
-        <div className={`pkmn-name-bar pkmn-name-bar--${type}`}>
-          <div className="pkmn-name-bar-stripe" aria-hidden="true" />
-          <div className="pkmn-name-bar-body">
-            <span className="pkmn-name-bar-name">{character.label}</span>
-            <span className="pkmn-name-bar-side">{character.side}</span>
-            {isPlayer && <span className="pkmn-name-bar-you">YOU</span>}
+      {showNameLabel && (
+        <Html
+          center
+          distanceFactor={6}
+          position={[0, labelY, 0]}
+          style={{ pointerEvents: 'none', userSelect: 'none' }}
+        >
+          <div className={`pkmn-name-bar pkmn-name-bar--${type}`}>
+            <div className="pkmn-name-bar-stripe" aria-hidden="true" />
+            <div className="pkmn-name-bar-body">
+              <span className="pkmn-name-bar-name">{character.label}</span>
+              <span className="pkmn-name-bar-side">{character.side}</span>
+              {isPlayer && <span className="pkmn-name-bar-you">YOU</span>}
+            </div>
           </div>
-        </div>
-      </Html>
+        </Html>
+      )}
     </group>
   );
 }
