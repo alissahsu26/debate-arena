@@ -8,10 +8,8 @@ import {
   METRIC_LABELS,
   debateRounds,
 } from './data/debateRounds';
+import { buildArgumentFromEvidence, getEvidenceMultiplier } from './services/argumentBuilder';
 import './index.css';
-
-// TODO: persist progress to localStorage or backend
-// TODO: connect RAG app for dynamic evidence / argument generation
 
 let combatTextId = 0;
 
@@ -24,7 +22,7 @@ function applyMetricImpact(metrics, impact, multiplier = 1) {
   const deltas = [];
 
   METRIC_KEYS.forEach((key) => {
-    if (impact[key] !== undefined) {
+    if (impact[key] !== undefined && impact[key] !== 0) {
       const delta = Math.round(impact[key] * multiplier);
       next[key] = clampMetric(next[key] + delta);
       if (delta !== 0) {
@@ -41,25 +39,39 @@ function applyMetricImpact(metrics, impact, multiplier = 1) {
   return { metrics: next, deltas };
 }
 
-function getEvidenceMultiplier(inspectedIds, roundEvidence) {
-  if (roundEvidence.every((e) => inspectedIds.includes(e.id))) return 1;
-  if (inspectedIds.length > 0) return 0.5;
-  return 0;
-}
-
 const initialState = {
-  phase: 'selectSide',
+  phase: 'onboarding',
   roundIndex: 0,
   playerSide: null,
   opponentSide: null,
+  exchangePhase: 'attack',
   metrics: { ...INITIAL_METRICS },
+  evidenceInventory: [],
+  activeEvidence: [],
   inspectedEvidenceIds: [],
-  unlockedCardIds: [],
+  argumentCard: null,
   combatTexts: [],
   throwingCardId: null,
+  throwPower: 1,
+  throwAim: { x: 0, y: 0 },
+  throwPowerLocked: false,
+  isSearching: false,
   showHybridMessage: false,
   finalChoice: null,
 };
+
+function resetExchangeState(state) {
+  return {
+    evidenceInventory: [],
+    activeEvidence: [],
+    inspectedEvidenceIds: [],
+    argumentCard: null,
+    throwPower: 1,
+    throwAim: { x: 0, y: 0 },
+    throwPowerLocked: false,
+    throwingCardId: null,
+  };
+}
 
 function gameReducer(state, action) {
   switch (action.type) {
@@ -70,103 +82,148 @@ function gameReducer(state, action) {
         ...state,
         playerSide,
         opponentSide,
-        phase: 'challenge',
+        phase: 'firstAttack',
+        ...resetExchangeState(state),
+        exchangePhase: 'attack',
       };
     }
 
     case 'ADVANCE_PHASE': {
-      const round = debateRounds[state.roundIndex];
       const transitions = {
-        challenge: 'evidence',
-        evidence: round.argumentCards?.length > 0 ? 'argument' : 'opponentCounter',
-        opponentCounter: 'rebuttal',
+        firstAttack: 'buildCase',
+        buildCase: 'launchArgument',
+        counterAttack: 'buildCase',
         roundComplete:
-          state.roundIndex + 1 >= debateRounds.length
-            ? 'finalChoice'
-            : 'challenge',
+          state.roundIndex + 1 >= debateRounds.length ? 'finalChoice' : 'firstAttack',
       };
 
       const nextPhase = transitions[state.phase];
       if (!nextPhase) return state;
 
-      if (state.phase === 'roundComplete' && nextPhase === 'challenge') {
+      if (state.phase === 'buildCase' && nextPhase === 'launchArgument') {
+        const inspected = state.activeEvidence.filter((e) =>
+          state.inspectedEvidenceIds.includes(e.id)
+        );
+        const argumentCard = buildArgumentFromEvidence(inspected);
         return {
           ...state,
-          phase: 'challenge',
+          phase: 'launchArgument',
+          argumentCard,
+          throwPowerLocked: false,
+          throwPower: 1,
+        };
+      }
+
+      if (state.phase === 'counterAttack' && nextPhase === 'buildCase') {
+        return {
+          ...state,
+          phase: 'buildCase',
+          exchangePhase: 'counter',
+          ...resetExchangeState(state),
+        };
+      }
+
+      if (state.phase === 'roundComplete' && nextPhase === 'firstAttack') {
+        return {
+          ...state,
+          phase: 'firstAttack',
           roundIndex: state.roundIndex + 1,
-          inspectedEvidenceIds: [],
-          unlockedCardIds: [],
-          throwingCardId: null,
+          exchangePhase: 'attack',
+          ...resetExchangeState(state),
         };
       }
 
       return { ...state, phase: nextPhase };
     }
 
+    case 'SEARCH_EVIDENCE': {
+      const newItems = action.results
+        .filter((item) => !state.evidenceInventory.some((e) => e.id === item.id))
+        .slice(0, 1);
+      return {
+        ...state,
+        evidenceInventory: [...state.evidenceInventory, ...newItems],
+        isSearching: false,
+      };
+    }
+
+    case 'MATERIALIZE_EVIDENCE': {
+      if (state.activeEvidence.some((e) => e.id === action.id)) return state;
+      const evidence = state.evidenceInventory.find((e) => e.id === action.id);
+      if (!evidence) return state;
+      return {
+        ...state,
+        activeEvidence: [...state.activeEvidence, evidence],
+      };
+    }
+
+    case 'SET_SEARCHING': {
+      return { ...state, isSearching: action.value };
+    }
+
     case 'INSPECT_EVIDENCE': {
       if (state.inspectedEvidenceIds.includes(action.id)) return state;
 
-      const round = debateRounds[state.roundIndex];
-      const evidence = round.evidence.find((e) => e.id === action.id);
-      const newInspected = [...state.inspectedEvidenceIds, action.id];
-      const newUnlocked = [...state.unlockedCardIds];
+      const evidence = state.activeEvidence.find((e) => e.id === action.id);
+      if (!evidence) return state;
 
-      evidence?.unlocksCardIds?.forEach((cardId) => {
-        const card = round.argumentCards?.find((c) => c.id === cardId);
-        if (card) {
-          const required = card.requiresEvidenceIds || round.evidence.map((e) => e.id);
-          if (required.every((reqId) => newInspected.includes(reqId)) && !newUnlocked.includes(cardId)) {
-            newUnlocked.push(cardId);
-          }
-        }
-      });
+      const newInspected = [...state.inspectedEvidenceIds, action.id];
+      const { metrics, deltas } = applyMetricImpact(state.metrics, evidence.effect || {}, 1);
 
       return {
         ...state,
         inspectedEvidenceIds: newInspected,
-        unlockedCardIds: newUnlocked,
+        metrics,
+        combatTexts: [...state.combatTexts, ...deltas],
+      };
+    }
+
+    case 'SET_THROW_AIM': {
+      return { ...state, throwAim: action.aim };
+    }
+
+    case 'LOCK_THROW_POWER': {
+      return {
+        ...state,
+        throwPower: action.power,
+        throwPowerLocked: true,
       };
     }
 
     case 'THROW_CARD': {
+      if (!state.throwPowerLocked) return state;
       return {
         ...state,
         phase: 'throwAnim',
-        throwingCardId: action.cardId,
+        throwingCardId: state.argumentCard?.id,
+        throwPower: action.power ?? state.throwPower,
+        throwAim: action.aim ?? state.throwAim,
       };
     }
 
     case 'THROW_COMPLETE': {
-      const round = debateRounds[state.roundIndex];
-      const card = round.argumentCards.find((c) => c.id === action.cardId);
-      if (!card) return { ...state, phase: 'opponentCounter', throwingCardId: null };
+      const card = state.argumentCard;
+      if (!card) {
+        return {
+          ...state,
+          phase: state.exchangePhase === 'attack' ? 'counterAttack' : 'roundComplete',
+          throwingCardId: null,
+        };
+      }
 
-      const multiplier = getEvidenceMultiplier(state.inspectedEvidenceIds, round.evidence);
-      const { metrics, deltas } = applyMetricImpact(state.metrics, card.metricImpact, multiplier);
+      const evidenceMultiplier = getEvidenceMultiplier(state.inspectedEvidenceIds.length);
+      const totalMultiplier = evidenceMultiplier * state.throwPower;
+      const { metrics, deltas } = applyMetricImpact(state.metrics, card.metricImpact, totalMultiplier);
+
+      const nextPhase = state.exchangePhase === 'attack' ? 'counterAttack' : 'roundComplete';
 
       return {
         ...state,
         metrics,
         combatTexts: [...state.combatTexts, ...deltas],
-        phase: 'opponentCounter',
+        phase: nextPhase,
         throwingCardId: null,
-      };
-    }
-
-    case 'SELECT_REBUTTAL': {
-      const round = debateRounds[state.roundIndex];
-      const rebuttal = round.rebuttals.find((r) => r.id === action.rebuttalId);
-      if (!rebuttal) return state;
-
-      const evidenceMultiplier = getEvidenceMultiplier(state.inspectedEvidenceIds, round.evidence);
-      const impact = rebuttal.isBest ? rebuttal.metricImpact : {};
-      const { metrics, deltas } = applyMetricImpact(state.metrics, impact, evidenceMultiplier);
-
-      return {
-        ...state,
-        metrics,
-        combatTexts: [...state.combatTexts, ...deltas],
-        phase: 'roundComplete',
+        throwPowerLocked: false,
       };
     }
 
@@ -227,16 +284,40 @@ export default function App() {
     dispatch({ type: 'ADVANCE_PHASE' });
   }, []);
 
+  const handleSelectSide = useCallback((side) => {
+    dispatch({ type: 'SELECT_SIDE', side });
+  }, []);
+
   const handleInspectEvidence = useCallback((id) => {
     dispatch({ type: 'INSPECT_EVIDENCE', id });
   }, []);
 
-  const handleThrowCard = useCallback((card) => {
-    dispatch({ type: 'THROW_CARD', cardId: card.id });
+  const handleSearchStart = useCallback(() => {
+    dispatch({ type: 'SET_SEARCHING', value: true });
   }, []);
 
-  const handleThrowComplete = useCallback((card) => {
-    dispatch({ type: 'THROW_COMPLETE', cardId: card.id });
+  const handleSearch = useCallback((results) => {
+    dispatch({ type: 'SEARCH_EVIDENCE', results });
+  }, []);
+
+  const handleMaterializeEvidence = useCallback((id) => {
+    dispatch({ type: 'MATERIALIZE_EVIDENCE', id });
+  }, []);
+
+  const handleThrowAim = useCallback((aim) => {
+    dispatch({ type: 'SET_THROW_AIM', aim });
+  }, []);
+
+  const handleLockPower = useCallback((power) => {
+    dispatch({ type: 'LOCK_THROW_POWER', power });
+  }, []);
+
+  const handleThrowCard = useCallback(() => {
+    dispatch({ type: 'THROW_CARD' });
+  }, []);
+
+  const handleThrowComplete = useCallback(() => {
+    dispatch({ type: 'THROW_COMPLETE' });
   }, []);
 
   const handleFinalChoice = useCallback((choice) => {
@@ -247,22 +328,26 @@ export default function App() {
     dispatch({ type: 'REMOVE_COMBAT_TEXT', id });
   }, []);
 
-  const showArena = state.phase !== 'selectSide';
+  const showArena = state.phase !== 'onboarding';
+  const isDramatic = ['firstAttack', 'counterAttack'].includes(state.phase);
 
   return (
-    <div className="app-root">
+    <div className={`app-root ${isDramatic ? 'arena-vignette' : ''}`}>
       {showArena && state.playerSide && (
-        <Canvas camera={{ position: [0, 1.55, 0.8], fov: 70, near: 0.1, far: 50 }}>
+        <Canvas camera={{ position: [0, 1.55, 0.5], fov: 55, near: 0.1, far: 80 }}>
           <Arena
             playerSide={state.playerSide}
             opponentSide={state.opponentSide}
             round={round}
             phase={state.phase}
+            activeEvidence={state.activeEvidence}
             inspectedEvidenceIds={state.inspectedEvidenceIds}
-            unlockedCardIds={state.unlockedCardIds}
+            argumentCard={state.argumentCard}
             throwingCardId={state.throwingCardId}
+            throwPower={state.throwPower}
+            throwAim={state.throwAim}
             onInspectEvidence={handleInspectEvidence}
-            onThrowCard={handleThrowCard}
+            onThrowAim={handleThrowAim}
             onThrowComplete={handleThrowComplete}
           />
         </Canvas>
@@ -275,12 +360,20 @@ export default function App() {
         dispatch={dispatch}
         round={round}
         onAdvance={handleAdvance}
+        onSelectSide={handleSelectSide}
+        onSearchStart={handleSearchStart}
+        onSearch={handleSearch}
+        onMaterializeEvidence={handleMaterializeEvidence}
+        onThrowCard={handleThrowCard}
+        onLockPower={handleLockPower}
         onFinalChoice={handleFinalChoice}
       />
 
       <CombatTextLayer texts={state.combatTexts} onRemove={handleRemoveCombatText} />
 
-      {showArena && <div className="fp-crosshair" aria-hidden="true" />}
+      {showArena && ['buildCase', 'launchArgument', 'throwAnim'].includes(state.phase) && (
+        <div className="fp-crosshair" aria-hidden="true" />
+      )}
     </div>
   );
 }

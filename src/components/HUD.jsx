@@ -5,7 +5,14 @@ import {
   FINAL_CHOICES,
   HYBRID_MESSAGE,
   debateRounds,
+  getOpponentChallenge,
+  getOpponentCounter,
 } from '../data/debateRounds';
+import Onboarding from './Onboarding';
+import BattleDialog from './BattleDialog';
+import BuildYourCase from './BuildYourCase';
+import EvidenceInventory from './EvidenceInventory';
+import ThrowTimingBar from './ThrowTimingBar';
 
 const METRIC_COLORS = {
   learning: '#4CAF50',
@@ -46,39 +53,42 @@ function Panel({ title, children, actions }) {
   );
 }
 
-export default function HUD({ state, dispatch, round, onAdvance, onFinalChoice, onThrowCard }) {
-  const { phase, playerSide, opponentSide, metrics, inspectedEvidenceIds, roundIndex } = state;
+export default function HUD({
+  state,
+  round,
+  onAdvance,
+  onSelectSide,
+  onSearchStart,
+  onSearch,
+  onMaterializeEvidence,
+  onThrowCard,
+  onLockPower,
+  onFinalChoice,
+}) {
+  const {
+    phase,
+    playerSide,
+    opponentSide,
+    metrics,
+    roundIndex,
+    evidenceInventory,
+    activeEvidence,
+    inspectedEvidenceIds,
+    exchangePhase,
+    argumentCard,
+    throwPowerLocked,
+    throwPower,
+    isSearching,
+  } = state;
 
   const opponent = CHARACTERS[opponentSide];
   const player = CHARACTERS[playerSide];
-  const allEvidenceInspected = round.evidence.every((e) => inspectedEvidenceIds.includes(e.id));
-  const hasArgumentCards = round.argumentCards?.length > 0;
 
-  if (phase === 'selectSide') {
+  if (phase === 'onboarding') {
     return (
       <div className="hud-overlay">
         <MetricBars metrics={metrics} />
-        <Panel title="Choose Your Side">
-          <p className="hud-text">Pick a side — you'll face your opponent across the arena in first person.</p>
-          <div className="side-buttons">
-            <button
-              type="button"
-              className="btn btn-carnegie"
-              onClick={() => dispatch({ type: 'SELECT_SIDE', side: 'carnegie' })}
-            >
-              {CHARACTERS.carnegie.label}
-              <span className="btn-sub">{CHARACTERS.carnegie.side}</span>
-            </button>
-            <button
-              type="button"
-              className="btn btn-mastery"
-              onClick={() => dispatch({ type: 'SELECT_SIDE', side: 'mastery' })}
-            >
-              {CHARACTERS.mastery.label}
-              <span className="btn-sub">{CHARACTERS.mastery.side}</span>
-            </button>
-          </div>
-        </Panel>
+        <Onboarding onSelectSide={onSelectSide} />
       </div>
     );
   }
@@ -111,7 +121,7 @@ export default function HUD({ state, dispatch, round, onAdvance, onFinalChoice, 
         <MetricBars metrics={metrics} />
         <Panel title={`You chose: ${FINAL_CHOICES.hybrid}`}>
           <p className="hud-text hybrid-message">{HYBRID_MESSAGE}</p>
-          <p className="hud-text muted">Thanks for playing the debate arena prototype.</p>
+          <p className="hud-text muted">Thanks for playing the debate arena.</p>
         </Panel>
       </div>
     );
@@ -122,15 +132,16 @@ export default function HUD({ state, dispatch, round, onAdvance, onFinalChoice, 
       <div className="hud-overlay">
         <MetricBars metrics={metrics} />
         <Panel title={`You chose: ${FINAL_CHOICES[state.finalChoice]}`}>
-          <p className="hud-text muted">Thanks for playing the debate arena prototype.</p>
+          <p className="hud-text muted">Thanks for playing the debate arena.</p>
         </Panel>
       </div>
     );
   }
 
-  const panelWrapperClass = ['evidence', 'argument', 'throwAnim'].includes(phase)
-    ? 'hud-panel-side'
-    : 'hud-panel-center';
+  const challengeText =
+    phase === 'counterAttack'
+      ? getOpponentCounter(round, playerSide)
+      : getOpponentChallenge(round, playerSide);
 
   return (
     <div className="hud-overlay">
@@ -138,144 +149,83 @@ export default function HUD({ state, dispatch, round, onAdvance, onFinalChoice, 
 
       <div className="round-badge">
         Round {roundIndex + 1} of {debateRounds.length}
+        {exchangePhase === 'counter' && ' — Counter'}
       </div>
 
-      <div className={panelWrapperClass}>
-      {phase === 'challenge' && (
-        <Panel
-          title={`${opponent.label} challenges:`}
-          actions={
-            <button type="button" className="btn btn-primary" onClick={onAdvance}>
-              Enter the Arena
+      {(phase === 'firstAttack' || phase === 'counterAttack') && (
+        <BattleDialog
+          speaker={opponent.label}
+          text={challengeText}
+          onContinue={onAdvance}
+        />
+      )}
+
+      {phase === 'buildCase' && (
+        <>
+          <div className="hud-panel-build">
+            <BuildYourCase
+              round={round}
+              roundIndex={roundIndex}
+              playerSide={playerSide}
+              exchangePhase={exchangePhase}
+              evidenceInventory={evidenceInventory}
+              inspectedEvidenceIds={inspectedEvidenceIds}
+              onSearchStart={onSearchStart}
+              onSearch={onSearch}
+              onAdvance={onAdvance}
+              isSearching={isSearching}
+            />
+          </div>
+          <EvidenceInventory
+            inventory={evidenceInventory}
+            materializedIds={activeEvidence.map((e) => e.id)}
+            inspectedIds={inspectedEvidenceIds}
+            onMaterialize={onMaterializeEvidence}
+          />
+        </>
+      )}
+
+      {phase === 'launchArgument' && argumentCard && (
+        <div className="hud-panel-launch">
+          <Panel title="Launch Your Argument">
+            <p className="hud-text argument-preview">"{argumentCard.text}"</p>
+            <p className="hud-text muted">You are defending {player.side}.</p>
+          </Panel>
+          <ThrowTimingBar
+            onLock={onLockPower}
+            locked={throwPowerLocked}
+            throwPower={throwPower}
+          />
+          {throwPowerLocked && (
+            <button type="button" className="btn btn-primary throw-btn" onClick={onThrowCard}>
+              Throw Argument!
             </button>
-          }
-        >
-          <p className="hud-text challenge-text">"{round.opponentChallenge}"</p>
-          <p className="hud-text muted">You are defending {player.side}.</p>
-        </Panel>
-      )}
-
-      {phase === 'evidence' && (
-        <Panel
-          title="Evidence Crystals Appeared"
-          actions={
-            allEvidenceInspected ? (
-              <button type="button" className="btn btn-primary" onClick={onAdvance}>
-                {hasArgumentCards ? 'Choose Your Argument' : 'Respond to Challenge'}
-              </button>
-            ) : (
-              <p className="hud-hint">Click crystals in the arena to inspect evidence ({inspectedEvidenceIds.length}/{round.evidence.length})</p>
-            )
-          }
-        >
-          <ul className="evidence-list">
-            {round.evidence.map((item) => {
-              const inspected = inspectedEvidenceIds.includes(item.id);
-              return (
-                <li key={item.id} className={inspected ? 'evidence-item inspected' : 'evidence-item'}>
-                  <span className="evidence-status">{inspected ? '✓' : '◇'}</span>
-                  <span>{inspected ? item.text : 'Uninspected crystal — click in arena'}</span>
-                </li>
-              );
-            })}
-          </ul>
-        </Panel>
-      )}
-
-      {phase === 'argument' && (
-        <Panel
-          title="Throw an Argument Card"
-          actions={
-            <>
-              {round.argumentCards.map((card) => {
-                const required = card.requiresEvidenceIds || round.evidence.map((e) => e.id);
-                const unlocked = required.every((id) => inspectedEvidenceIds.includes(id));
-                return unlocked ? (
-                  <button
-                    key={card.id}
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={() => onThrowCard(card)}
-                  >
-                    Throw: {card.text}
-                  </button>
-                ) : null;
-              })}
-              <p className="hud-hint">Or click the yellow card floating in the arena.</p>
-            </>
-          }
-        >
-          <p className="hud-text muted">
-            Stronger arguments unlock after inspecting evidence. Cards stay locked until all evidence is reviewed.
-          </p>
-          {round.argumentCards.map((card) => {
-            const required = card.requiresEvidenceIds || round.evidence.map((e) => e.id);
-            const unlocked = required.every((id) => inspectedEvidenceIds.includes(id));
-            return (
-              <div key={card.id} className={`card-preview ${unlocked ? 'unlocked' : 'locked'}`}>
-                {unlocked ? card.text : '🔒 Locked — inspect all evidence first'}
-              </div>
-            );
-          })}
-        </Panel>
+          )}
+        </div>
       )}
 
       {phase === 'throwAnim' && (
-        <Panel title="Argument Incoming!">
-          <p className="hud-text muted">Watch your card fly toward the opponent...</p>
-        </Panel>
-      )}
-
-      {phase === 'opponentCounter' && (
-        <Panel
-          title={`${opponent.label} responds:`}
-          actions={
-            <button type="button" className="btn btn-primary" onClick={onAdvance}>
-              Choose Rebuttal
-            </button>
-          }
-        >
-          <p className="hud-text challenge-text">"{round.opponentCounter}"</p>
-        </Panel>
-      )}
-
-      {phase === 'rebuttal' && (
-        <Panel title="Choose Your Best Rebuttal">
-          <p className="hud-hint rebuttal-hint">
-            {allEvidenceInspected
-              ? 'Full evidence bonus active — best rebuttal applies full impact.'
-              : inspectedEvidenceIds.length > 0
-                ? 'Partial evidence — best rebuttal applies 50% impact.'
-                : 'No evidence inspected — rebuttal impact reduced to 0%.'}
-          </p>
-          <div className="rebuttal-buttons">
-            {round.rebuttals.map((rb) => (
-              <button
-                key={rb.id}
-                type="button"
-                className="btn btn-rebuttal"
-                onClick={() => dispatch({ type: 'SELECT_REBUTTAL', rebuttalId: rb.id })}
-              >
-                {rb.text}
-              </button>
-            ))}
-          </div>
-        </Panel>
+        <div className="hud-panel-launch">
+          <Panel title="Argument Incoming!">
+            <p className="hud-text muted">Watch your argument fly toward {opponent.label}...</p>
+          </Panel>
+        </div>
       )}
 
       {phase === 'roundComplete' && (
-        <Panel
-          title={`Round ${roundIndex + 1} Complete`}
-          actions={
-            <button type="button" className="btn btn-primary" onClick={onAdvance}>
-              {roundIndex + 1 >= debateRounds.length ? 'See Final Results' : 'Next Round'}
-            </button>
-          }
-        >
-          <p className="hud-text muted">Nice work! Review your metrics and continue.</p>
-        </Panel>
+        <div className="hud-panel-center">
+          <Panel
+            title={`Round ${roundIndex + 1} Complete`}
+            actions={
+              <button type="button" className="btn btn-primary" onClick={onAdvance}>
+                {roundIndex + 1 >= debateRounds.length ? 'See Final Results' : 'Next Round'}
+              </button>
+            }
+          >
+            <p className="hud-text muted">Nice work! Review your metrics and continue.</p>
+          </Panel>
+        </div>
       )}
-      </div>
     </div>
   );
 }
