@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Character from './Character';
 import EvidenceCrystal from './EvidenceCrystal';
 import FirstPersonCamera from './FirstPersonCamera';
@@ -12,9 +12,21 @@ const CRYSTAL_POSITIONS = [
   [0, 0.75, -1.6],
 ];
 
-const OPPONENT_POSITION = [0, -0.3, -9.5];
-const OPPONENT_ROTATION = [0, 0, 0];
-const OPPONENT_LOOK_Y = 1.5;
+// Arena placement per opponent model (carnegie = scholar.glb, mastery = wizard.glb)
+const CHARACTER_ARENA_SETTINGS = {
+  carnegie: {
+    position: [0, -1.2, -12.5],
+    rotation: [0, Math.PI, 0],
+    scale: 0.09,
+    lookY: 1.5,
+  },
+  mastery: {
+    position: [0, -0.8, -10.5],
+    rotation: [0, Math.PI, 0],
+    scale: 1.2,
+    lookY: 1.5,
+  },
+};
 
 const PHASES_HIDE_3D_NAME_LABEL = new Set([
   'buildCase',
@@ -46,9 +58,13 @@ export default function Arena({
   const fogNear = isDramatic ? 12 : 22;
   const fogFar = isDramatic ? 32 : 50;
 
+  const opponentSettings = CHARACTER_ARENA_SETTINGS[opponentSide] ?? CHARACTER_ARENA_SETTINGS.mastery;
+  const { position: opponentPosition, rotation: opponentRotation, scale: opponentScale, lookY } =
+    opponentSettings;
+
   const targetOffset = throwAim
-    ? [OPPONENT_POSITION[0] + throwAim.x * 2, OPPONENT_LOOK_Y + throwAim.y * 1.5, OPPONENT_POSITION[2]]
-    : [OPPONENT_POSITION[0], OPPONENT_LOOK_Y, OPPONENT_POSITION[2]];
+    ? [opponentPosition[0] + throwAim.x * 2, lookY + throwAim.y * 1.5, opponentPosition[2]]
+    : [opponentPosition[0], lookY, opponentPosition[2]];
 
   const visibleEvidence =
     phase === 'launchCrystals' || phase === 'throwAnim'
@@ -56,8 +72,13 @@ export default function Arena({
       : activeEvidence;
 
   const confirmedCount = visibleEvidence.length;
+  const [attackTrigger, setAttackTrigger] = useState(0);
   const [hitTrigger, setHitTrigger] = useState(0);
   const handleCrystalHit = useCallback(() => setHitTrigger((n) => n + 1), []);
+
+  useEffect(() => {
+    if (isThrowPhase) setAttackTrigger((n) => n + 1);
+  }, [isThrowPhase]);
 
   return (
     <>
@@ -69,7 +90,7 @@ export default function Arena({
       <directionalLight position={[0, 4, 6]} intensity={dirIntensity} color="#ffffff" />
       <directionalLight position={[0, 3, -2]} intensity={0.6} color="#c8d0ff" />
       <pointLight
-        position={[OPPONENT_POSITION[0], 2.8, OPPONENT_POSITION[2] + 2]}
+        position={[opponentPosition[0], 2.8, opponentPosition[2] + 2]}
         intensity={4}
         color="#ffffff"
         distance={16}
@@ -93,11 +114,13 @@ export default function Arena({
 
       <Character
         type={opponentSide}
-        position={OPPONENT_POSITION}
-        rotation={OPPONENT_ROTATION}
-        scale={1.2}
+        position={opponentPosition}
+        rotation={opponentRotation}
+        scale={opponentScale}
         isDramatic={isDramatic}
         showNameLabel={!PHASES_HIDE_3D_NAME_LABEL.has(phase)}
+        isUnderAttack={isThrowPhase}
+        attackTrigger={attackTrigger}
         hitTrigger={hitTrigger}
       />
 
@@ -123,7 +146,7 @@ export default function Arena({
         />
       ))}
 
-      <FirstPersonCamera opponentPosition={OPPONENT_POSITION} />
+      <FirstPersonCamera opponentPosition={opponentPosition} lookY={lookY} />
     </>
   );
 }
