@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Character from './Character';
 import EvidenceCrystal from './EvidenceCrystal';
 import FirstPersonCamera from './FirstPersonCamera';
@@ -15,9 +15,9 @@ const CRYSTAL_POSITIONS = [
 // Arena placement per opponent model (carnegie = scholar.glb, mastery = wizard.glb)
 const CHARACTER_ARENA_SETTINGS = {
   carnegie: {
-    position: [0, 1, -6.5],
-    rotation: [0, 0, 0],
-    scale: 1.2,
+    position: [0, -1.2, -12.5],
+    rotation: [0, Math.PI, 0],
+    scale: 0.09,
     lookY: 1.5,
   },
   mastery: {
@@ -72,8 +72,13 @@ export default function Arena({
       : activeEvidence;
 
   const confirmedCount = visibleEvidence.length;
+  const [attackTrigger, setAttackTrigger] = useState(0);
   const [hitTrigger, setHitTrigger] = useState(0);
   const handleCrystalHit = useCallback(() => setHitTrigger((n) => n + 1), []);
+
+  useEffect(() => {
+    if (isThrowPhase) setAttackTrigger((n) => n + 1);
+  }, [isThrowPhase]);
 
   return (
     <>
@@ -114,6 +119,8 @@ export default function Arena({
         scale={opponentScale}
         isDramatic={isDramatic}
         showNameLabel={!PHASES_HIDE_3D_NAME_LABEL.has(phase)}
+        isUnderAttack={isThrowPhase}
+        attackTrigger={attackTrigger}
         hitTrigger={hitTrigger}
       />
 
