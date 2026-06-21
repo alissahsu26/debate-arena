@@ -12,12 +12,20 @@ export default function EvidenceQuiz({ quiz, evidenceLabel, crystalCategory, onA
       <div className="rpg-box evidence-quiz-box">
         <p className="rpg-heading">Complete the argument</p>
         {evidenceLabel && !answered && (
-          <p className="evidence-quiz-crystal-label">
-            <span className="crystal-ui-gem" style={{ background: crystalColor }} aria-hidden="true">
-              <span className="crystal-ui-shine" />
-            </span>
-            {evidenceLabel} materialized!
-          </p>
+          <div
+            className="pkmn-reveal"
+            style={{ '--reveal-color': crystalColor }}
+          >
+            <div className="pkmn-reveal-gem" aria-hidden="true">
+              <span className="crystal-ui-gem" style={{ background: crystalColor }}>
+                <span className="crystal-ui-shine" />
+              </span>
+            </div>
+            <p className="pkmn-reveal-text">
+              <span className="pkmn-reveal-name">{evidenceLabel}</span>
+              <span className="pkmn-reveal-action"> materialized!</span>
+            </p>
+          </div>
         )}
         <p className="evidence-quiz-prompt">{quiz.prompt}</p>
         <div className="evidence-quiz-options">

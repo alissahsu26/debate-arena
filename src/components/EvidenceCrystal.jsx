@@ -135,20 +135,16 @@ export default function EvidenceCrystal({
           center
           position={[0, 1.1, 0]}
           distanceFactor={5}
-          style={{
-            color: 'white',
-            fontSize: '10px',
-            textAlign: 'center',
-            whiteSpace: 'nowrap',
-            textShadow: '0 1px 4px rgba(0,0,0,0.9)',
-            pointerEvents: 'none',
-            userSelect: 'none',
-            background: 'rgba(0,0,0,0.6)',
-            padding: '4px 8px',
-            borderRadius: '4px',
-          }}
+          style={{ pointerEvents: 'none', userSelect: 'none' }}
         >
-          {evidence.label}
+          <div className="crystal-label-box">
+            <span
+              className="crystal-label-gem"
+              style={{ background: color }}
+              aria-hidden="true"
+            />
+            <span className="crystal-label-text">{evidence.label}</span>
+          </div>
         </Html>
       )}
     </group>

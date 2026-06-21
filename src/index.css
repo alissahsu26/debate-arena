@@ -1523,7 +1523,7 @@ body,
   color: #383838;
   background: #f8f8f8;
   border: 2px solid #383838;
-  padding: 3px 8px 3px 6px;
+  padding: 4px 10px 4px 8px;
   white-space: nowrap;
   pointer-events: none;
   user-select: none;
@@ -1532,6 +1532,8 @@ body,
     2px 2px 0 #606060;
   -webkit-font-smoothing: none;
   font-smooth: never;
+  image-rendering: pixelated;
+  animation: pkmnPopIn 0.35s steps(4) both;
 }
 
 .crystal-label-gem {
@@ -1541,30 +1543,183 @@ body,
   border: 1px solid #383838;
   transform: rotate(45deg);
   flex-shrink: 0;
+  box-shadow:
+    inset 1px 1px 0 rgba(255, 255, 255, 0.55),
+    inset -1px -1px 0 rgba(0, 0, 0, 0.2);
 }
 
 .crystal-label-text {
-  max-width: 160px;
+  max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* Evidence quiz crystal line */
-.evidence-quiz-crystal-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-family: 'VT323', monospace;
-  font-size: 20px;
-  color: #383838;
-  margin: 0 0 8px;
-  padding: 6px 8px;
-  background: #e8e8e8;
-  border: 2px solid #606060;
+/* Pokemon-style opponent nameplate (3D arena) */
+.pkmn-name-bar {
+  position: relative;
+  min-width: 160px;
+  max-width: 220px;
+  background: #f8f8f8;
+  border: 3px solid #383838;
+  box-shadow:
+    inset 0 0 0 2px #ffffff,
+    3px 3px 0 rgba(0, 0, 0, 0.55);
+  image-rendering: pixelated;
+  animation: pkmnPopIn 0.4s steps(4) both;
 }
 
-.evidence-quiz-crystal-label .crystal-ui-gem {
-  background: var(--crystal-color, #58D8F8);
+.pkmn-name-bar-stripe {
+  height: 6px;
+  background: var(--pkmn-stripe, #c03030);
+  border-bottom: 2px solid #383838;
+}
+
+.pkmn-name-bar--carnegie {
+  --pkmn-stripe: #0080ff;
+}
+
+.pkmn-name-bar--mastery {
+  --pkmn-stripe: #ff0000;
+}
+
+.pkmn-name-bar-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 5px 12px 6px;
+  text-align: left;
+}
+
+.pkmn-name-bar-name {
+  font-family: 'Press Start 2P', 'VT323', monospace;
+  font-size: clamp(6px, 1.4vw, 9px);
+  line-height: 1.7;
+  color: #383838;
+  letter-spacing: 0.02em;
+  word-break: break-word;
+  -webkit-font-smoothing: none;
+  font-smooth: never;
+}
+
+.pkmn-name-bar-side {
+  font-family: 'VT323', 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1;
+  color: #606060;
+  -webkit-font-smoothing: none;
+  font-smooth: never;
+}
+
+.pkmn-name-bar-you {
+  font-family: 'Press Start 2P', 'VT323', monospace;
+  font-size: 6px;
+  line-height: 1.6;
+  color: #ffcc00;
+  text-shadow: 1px 1px 0 #383838;
+  margin-top: 2px;
+}
+
+.opponent-hud-badge {
+  pointer-events: none;
+  position: fixed;
+  top: 88px;
+  left: 16px;
+  z-index: 22;
+}
+
+/* Pokemon-style crystal materialization reveal */
+.pkmn-reveal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 14px 16px 12px;
+  background: #f8f8f8;
+  border: 3px solid #383838;
+  box-shadow:
+    inset 0 0 0 2px #ffffff,
+    0 0 0 3px var(--reveal-color, #58D8F8),
+    4px 4px 0 #606060;
+  animation: pkmnRevealFlash 0.6s steps(3) both;
+}
+
+.pkmn-reveal-gem {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: #e8e8e8;
+  border: 2px solid #383838;
+  box-shadow: inset 0 0 0 1px #ffffff;
+}
+
+.pkmn-reveal-gem .crystal-ui-gem {
+  width: 22px;
+  height: 22px;
+}
+
+.pkmn-reveal-text {
+  margin: 0;
+  text-align: center;
+  font-family: 'VT323', 'Courier New', monospace;
+  font-size: 22px;
+  line-height: 1.35;
+  color: #383838;
+  -webkit-font-smoothing: none;
+  font-smooth: never;
+}
+
+.pkmn-reveal-name {
+  font-family: 'Press Start 2P', 'VT323', monospace;
+  font-size: 9px;
+  line-height: 1.8;
+  color: var(--reveal-color, #383838);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.pkmn-reveal-action {
+  font-size: 20px;
+  color: #383838;
+}
+
+@keyframes pkmnPopIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pkmnRevealFlash {
+  0% {
+    opacity: 0;
+    transform: scale(0.9);
+    box-shadow:
+      inset 0 0 0 2px #ffffff,
+      0 0 0 3px #ffcc00,
+      4px 4px 0 #606060;
+  }
+  50% {
+    box-shadow:
+      inset 0 0 0 2px #ffffff,
+      0 0 0 3px var(--reveal-color, #58D8F8),
+      4px 4px 0 #606060;
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow:
+      inset 0 0 0 2px #ffffff,
+      0 0 0 3px var(--reveal-color, #58D8F8),
+      4px 4px 0 #606060;
+  }
 }
 
 .evidence-quiz-prompt {

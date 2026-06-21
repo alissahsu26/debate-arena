@@ -4,7 +4,8 @@ import { Html } from '@react-three/drei';
 import * as THREE from 'three';
 import { CHARACTERS } from '../data/debateRounds';
 
-const TARGET_HEIGHT = 2.8;
+const HEAD_HEIGHT = 2.05;
+const NAME_LABEL_OFFSET = 0.7;
 const DAMAGE_COLOR = '#ff3333';
 
 function CharacterModel({ type, damageRef }) {
@@ -110,6 +111,7 @@ function CharacterInner({
   scale,
   isPlayer,
   isDramatic,
+  showNameLabel = true,
   hitTrigger = 0,
 }) {
   const groupRef = useRef();
@@ -141,7 +143,7 @@ function CharacterInner({
     groupRef.current.scale.setScalar(scale * scaleBoost);
   });
 
-  const labelY = TARGET_HEIGHT + 0.4;
+  const labelY = HEAD_HEIGHT + NAME_LABEL_OFFSET;
 
   return (
     <group ref={groupRef} position={position} rotation={rotation}>
@@ -153,19 +155,16 @@ function CharacterInner({
         center
         distanceFactor={6}
         position={[0, labelY, 0]}
-        style={{
-          color: 'white',
-          fontSize: '13px',
-          fontWeight: 'bold',
-          textAlign: 'center',
-          whiteSpace: 'nowrap',
-          textShadow: '0 1px 6px rgba(0,0,0,0.9)',
-          pointerEvents: 'none',
-          userSelect: 'none',
-        }}
+        style={{ pointerEvents: 'none', userSelect: 'none' }}
       >
-        {character.label}
-        {isPlayer && <div style={{ fontSize: '10px', color: '#FFD700' }}>(You)</div>}
+        <div className={`pkmn-name-bar pkmn-name-bar--${type}`}>
+          <div className="pkmn-name-bar-stripe" aria-hidden="true" />
+          <div className="pkmn-name-bar-body">
+            <span className="pkmn-name-bar-name">{character.label}</span>
+            <span className="pkmn-name-bar-side">{character.side}</span>
+            {isPlayer && <span className="pkmn-name-bar-you">YOU</span>}
+          </div>
+        </div>
       </Html>
     </group>
   );

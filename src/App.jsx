@@ -101,6 +101,11 @@ function buildOpponentTurnState(state) {
   };
 }
 
+function gameReducer(state, action) {
+  switch (action.type) {
+    case 'PLAY_AGAIN':
+      return { ...initialState };
+
     case 'SELECT_SIDE': {
       const playerSide = action.side;
       const opponentSide = playerSide === 'carnegie' ? 'mastery' : 'carnegie';
@@ -388,6 +393,10 @@ export default function App() {
     dispatch({ type: 'SELECT_SIDE', side });
   }, []);
 
+  const handlePlayAgain = useCallback(() => {
+    dispatch({ type: 'PLAY_AGAIN' });
+  }, []);
+
   const handleDismissEvidenceReveal = useCallback(() => {
     dispatch({ type: 'DISMISS_EVIDENCE_REVEAL' });
   }, []);
@@ -497,6 +506,7 @@ export default function App() {
         onDismissQuiz={handleDismissQuiz}
         onThrowCrystals={handleThrowCrystals}
         onLockPower={handleLockPower}
+        onPlayAgain={handlePlayAgain}
       />
 
       <CombatTextLayer texts={state.combatTexts} onRemove={handleRemoveCombatText} />

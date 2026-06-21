@@ -12,9 +12,16 @@ const CRYSTAL_POSITIONS = [
   [0, 0.75, -1.6],
 ];
 
-const OPPONENT_POSITION = [0, 0, -4.5];
+const OPPONENT_POSITION = [0, -0.3, -9.5];
 const OPPONENT_ROTATION = [0, 0, 0];
 const OPPONENT_LOOK_Y = 1.5;
+
+const PHASES_HIDE_3D_NAME_LABEL = new Set([
+  'buildCase',
+  'battle',
+  'roundComplete',
+  'debateResult',
+]);
 
 export default function Arena({
   opponentSide,
@@ -90,6 +97,7 @@ export default function Arena({
         rotation={OPPONENT_ROTATION}
         scale={1.2}
         isDramatic={isDramatic}
+        showNameLabel={!PHASES_HIDE_3D_NAME_LABEL.has(phase)}
         hitTrigger={hitTrigger}
       />
 
