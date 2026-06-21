@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { searchEvidence } from '../services/evidenceSearch';
 import { getSuggestedSearchPrompt } from '../data/debateRounds';
+
+export const MAX_EVIDENCE_SEARCHES = 3;
 
 export default function BuildYourCase({
   round,
@@ -8,32 +10,31 @@ export default function BuildYourCase({
   playerSide,
   exchangePhase,
   evidenceInventory,
-  inspectedEvidenceIds,
   onSearchStart,
   onSearch,
   onAdvance,
   isSearching,
+  pendingEvidenceReveal,
 }) {
   const [query, setQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(null);
+  const [searchHint, setSearchHint] = useState(null);
+  const inputRef = useRef(null);
 
   useEffect(() => {
     setQuery('');
     setSelectedCategory(null);
+    setSearchHint(null);
   }, [roundIndex, exchangePhase]);
 
   const handleSuggestedClick = (category) => {
     setSelectedCategory(category);
-    setQuery(getSuggestedSearchPrompt(roundIndex, playerSide, category, exchangePhase));
-  };
-
-  const handleQueryChange = (value) => {
-    setQuery(value);
-    setSelectedCategory(null);
+    setSearchHint(getSuggestedSearchPrompt(roundIndex, playerSide, category, exchangePhase));
+    inputRef.current?.focus();
   };
 
   const handleSearch = async () => {
-    if (!query.trim()) return;
+    if (!query.trim() || evidenceInventory.length >= MAX_EVIDENCE_SEARCHES) return;
     onSearchStart?.();
     const results = await searchEvidence({
       query,
@@ -44,30 +45,34 @@ export default function BuildYourCase({
       excludeIds: evidenceInventory.map((e) => e.id),
     });
     onSearch(results);
+    setQuery('');
   };
 
-  const minMet = inspectedEvidenceIds.length >= 1;
+  const searchesLeft = MAX_EVIDENCE_SEARCHES - evidenceInventory.length;
+  const canSearch = searchesLeft > 0 && !pendingEvidenceReveal;
+  const canReady = evidenceInventory.length >= 1 && !pendingEvidenceReveal;
   const suggested = round.suggestedSearches || [];
 
   return (
     <div className="build-your-case">
-      <div className="god-prompt">
-        <div className="god-prompt-icon">◈</div>
-        <div className="god-prompt-text">
-          <span className="god-prompt-label">Computer God</span>
-          <p>Find evidence to support your position.</p>
-        </div>
-      </div>
+      <div className="rpg-box build-case-box">
+        <p className="rpg-heading">Build your case</p>
+        <p className="rpg-body">
+          Search for evidence (up to {MAX_EVIDENCE_SEARCHES} times) to fill your inventory.
+        </p>
+        <p className="rpg-hint">
+          {searchesLeft > 0
+            ? `${searchesLeft} search${searchesLeft === 1 ? '' : 'es'} remaining.`
+            : 'Inventory full — begin the fight when ready.'}
+        </p>
 
-      <div className="search-section">
-        <p className="search-label">Suggested searches:</p>
-        <div className="search-chips">
+        <div className="build-suggestions">
           {suggested.map((label) => (
             <button
               key={label}
               type="button"
-              className={`search-chip ${selectedCategory === label ? 'selected' : ''}`}
-              disabled={isSearching}
+              className={`rpg-suggest-btn ${selectedCategory === label ? 'selected' : ''}`}
+              disabled={isSearching || !canSearch}
               onClick={() => handleSuggestedClick(label)}
             >
               {label}
@@ -75,42 +80,39 @@ export default function BuildYourCase({
           ))}
         </div>
 
-        <div className="search-input-row">
+        {searchHint && (
+          <p className="rpg-search-prompt">
+            <span className="rpg-search-prompt-label">Try searching:</span> {searchHint}
+          </p>
+        )}
+
+        <div className="build-chat-row">
           <input
+            ref={inputRef}
             type="text"
-            className="search-input"
-            placeholder="What evidence supports your position?"
+            className="build-chat-input"
+            placeholder="Type your search here..."
             value={query}
-            onChange={(e) => handleQueryChange(e.target.value)}
+            onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-            disabled={isSearching}
+            disabled={isSearching || !canSearch}
           />
           <button
             type="button"
-            className="btn btn-primary search-btn"
-            disabled={isSearching || !query.trim()}
+            className="rpg-suggest-btn build-chat-submit"
+            disabled={isSearching || !query.trim() || !canSearch}
             onClick={handleSearch}
           >
-            {isSearching ? 'Searching...' : 'Search'}
+            {isSearching ? '...' : 'Search'}
           </button>
         </div>
-        <p className="hud-text muted search-hint">
-          Each search adds one piece of evidence to your inventory below.
-        </p>
-      </div>
 
-      <div className="build-actions">
-        {minMet ? (
-          <button type="button" className="btn btn-primary" onClick={onAdvance}>
-            Launch Argument
+        {canReady ? (
+          <button type="button" className="rpg-suggest-btn build-ready-btn" onClick={onAdvance}>
+            Begin Fight ▶
           </button>
         ) : (
-          <p className="hud-hint">
-            Materialize evidence from your inventory, then inspect crystals in the arena.
-          </p>
-        )}
-        {minMet && evidenceInventory.length > 1 && (
-          <p className="hud-text muted">Optional: search and inspect more evidence for a stronger throw.</p>
+          <p className="rpg-hint">Search for evidence to add it to your inventory.</p>
         )}
       </div>
     </div>

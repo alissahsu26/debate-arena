@@ -1,47 +1,86 @@
 import { useState } from 'react';
 import { CHARACTERS } from '../data/debateRounds';
 
+const CHAMPIONS = {
+  mastery: {
+    ...CHARACTERS.mastery,
+    title: 'Mastery Lizard Wizard',
+    art: '/images/onboarding/wizard-art.png',
+    theme: 'mastery',
+  },
+  carnegie: {
+    ...CHARACTERS.carnegie,
+    title: 'Cat Scholar',
+    art: '/images/onboarding/scholar-art.png',
+    theme: 'carnegie',
+  },
+};
+
+function ChampionCard({ champion, side, selected, onSelect }) {
+  const isSelected = selected === side;
+
+  return (
+    <button
+      type="button"
+      className={`champion-card champion-card--${champion.theme} ${isSelected ? 'selected' : ''}`}
+      onClick={() => onSelect(side)}
+      aria-pressed={isSelected}
+    >
+      <h2 className="champion-card-title">{champion.title}</h2>
+      <div className="champion-card-art">
+        <img src={champion.art} alt="" draggable={false} />
+      </div>
+      <div className="champion-card-info">
+        <h3 className="champion-card-side">{champion.side}</h3>
+        <p className="champion-card-desc">{champion.description}</p>
+      </div>
+    </button>
+  );
+}
+
 export default function Onboarding({ onSelectSide }) {
   const [selected, setSelected] = useState(null);
 
   return (
     <div className="onboarding">
-      <div className="onboarding-content">
+      <header className="onboarding-header">
         <h1 className="onboarding-title">Choose Your Side</h1>
-        <p className="onboarding-subtitle">Every school makes tradeoffs.</p>
-        <p className="onboarding-desc">
-          Step into the arena and defend the educational model you believe creates the best learning
-          experience.
-        </p>
+        <p className="onboarding-subtitle">Pick a side to defend</p>
+      </header>
 
-        <div className="side-cards">
-          <button
-            type="button"
-            className={`side-card side-card-mastery ${selected === 'mastery' ? 'selected' : ''}`}
-            onClick={() => setSelected('mastery')}
-          >
-            <span className="side-card-name">{CHARACTERS.mastery.side}</span>
-            <span className="side-card-desc">{CHARACTERS.mastery.description}</span>
-          </button>
-          <button
-            type="button"
-            className={`side-card side-card-carnegie ${selected === 'carnegie' ? 'selected' : ''}`}
-            onClick={() => setSelected('carnegie')}
-          >
-            <span className="side-card-name">{CHARACTERS.carnegie.side}</span>
-            <span className="side-card-desc">{CHARACTERS.carnegie.description}</span>
-          </button>
+      <div className="onboarding-arena">
+        <div className="champion-cards">
+          <ChampionCard
+            champion={CHAMPIONS.mastery}
+            side="mastery"
+            selected={selected}
+            onSelect={setSelected}
+          />
+          <ChampionCard
+            champion={CHAMPIONS.carnegie}
+            side="carnegie"
+            selected={selected}
+            onSelect={setSelected}
+          />
         </div>
+      </div>
 
+      <footer className="onboarding-footer">
         <button
           type="button"
-          className="btn btn-primary onboarding-enter"
+          className="onboarding-confirm"
           disabled={!selected}
           onClick={() => selected && onSelectSide(selected)}
         >
-          Enter the Arena
+          <span className="onboarding-arrow onboarding-arrow--left" aria-hidden="true">
+            ◀
+          </span>
+          <span>{selected ? 'Enter the Arena' : 'Select Your Champion'}</span>
+          <span className="onboarding-arrow onboarding-arrow--right" aria-hidden="true">
+            ▶
+          </span>
         </button>
-      </div>
+      </footer>
     </div>
   );
 }

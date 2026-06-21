@@ -1,42 +1,34 @@
-import { useReducer, useCallback, useEffect } from 'react';
+import { useReducer, useCallback, useEffect, useRef, Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
 import Arena from './components/Arena';
 import HUD from './components/HUD';
+import { INITIAL_AUDIENCE_SCORE, debateRounds } from './data/debateRounds';
+import { buildLaunchPayload, getEvidenceMultiplier } from './services/argumentBuilder';
+import { getEvidenceQuiz } from './services/evidenceQuiz';
 import {
-  INITIAL_METRICS,
-  METRIC_KEYS,
-  METRIC_LABELS,
-  debateRounds,
-} from './data/debateRounds';
-import { buildArgumentFromEvidence, getEvidenceMultiplier } from './services/argumentBuilder';
+  clampAudienceScore,
+  computeLaunchAudienceShift,
+  formatAudienceShiftText,
+  getOpponentCounterShift,
+  isShiftFavorable,
+} from './services/audienceMeter';
 import './index.css';
 
-let combatTextId = 0;
+let audienceTextId = 0;
 
-function clampMetric(value) {
-  return Math.max(0, Math.min(100, Math.round(value)));
+function createAudienceText(delta, playerSide) {
+  return {
+    id: ++audienceTextId,
+    text: formatAudienceShiftText(delta),
+    positive: isShiftFavorable(delta, playerSide),
+  };
 }
 
-function applyMetricImpact(metrics, impact, multiplier = 1) {
-  const next = { ...metrics };
-  const deltas = [];
-
-  METRIC_KEYS.forEach((key) => {
-    if (impact[key] !== undefined && impact[key] !== 0) {
-      const delta = Math.round(impact[key] * multiplier);
-      next[key] = clampMetric(next[key] + delta);
-      if (delta !== 0) {
-        const sign = delta > 0 ? '+' : '';
-        deltas.push({
-          id: ++combatTextId,
-          text: `${METRIC_LABELS[key]} ${sign}${delta}`,
-          positive: delta > 0,
-        });
-      }
-    }
-  });
-
-  return { metrics: next, deltas };
+function applyAudienceShift(state, delta) {
+  return {
+    audienceScore: clampAudienceScore(state.audienceScore + delta),
+    combatTexts: [...state.combatTexts, createAudienceText(delta, state.playerSide)],
+  };
 }
 
 const initialState = {
@@ -45,19 +37,22 @@ const initialState = {
   playerSide: null,
   opponentSide: null,
   exchangePhase: 'attack',
-  metrics: { ...INITIAL_METRICS },
+  audienceScore: INITIAL_AUDIENCE_SCORE,
   evidenceInventory: [],
   activeEvidence: [],
   inspectedEvidenceIds: [],
-  argumentCard: null,
+  launchPayload: null,
   combatTexts: [],
-  throwingCardId: null,
+  isThrowingCrystals: false,
   throwPower: 1,
   throwAim: { x: 0, y: 0 },
   throwPowerLocked: false,
   isSearching: false,
-  showHybridMessage: false,
-  finalChoice: null,
+  pendingEvidenceReveal: null,
+  activeQuiz: null,
+  quizAnswered: null,
+  failedEvidenceIds: [],
+  explodingEvidenceId: null,
 };
 
 function resetExchangeState(state) {
@@ -65,16 +60,47 @@ function resetExchangeState(state) {
     evidenceInventory: [],
     activeEvidence: [],
     inspectedEvidenceIds: [],
-    argumentCard: null,
+    launchPayload: null,
     throwPower: 1,
     throwAim: { x: 0, y: 0 },
     throwPowerLocked: false,
-    throwingCardId: null,
+    isThrowingCrystals: false,
+    pendingEvidenceReveal: null,
+    activeQuiz: null,
+    quizAnswered: null,
+    failedEvidenceIds: [],
+    explodingEvidenceId: null,
   };
 }
 
-function gameReducer(state, action) {
-  switch (action.type) {
+function hasUsableEvidence(state) {
+  return state.evidenceInventory.some(
+    (item) =>
+      !state.inspectedEvidenceIds.includes(item.id) &&
+      !state.failedEvidenceIds.includes(item.id) &&
+      !state.activeEvidence.some((evidence) => evidence.id === item.id)
+  );
+}
+
+function shouldSkipToOpponentTurn(state) {
+  if (state.phase !== 'battle') return false;
+  if (state.activeQuiz || state.explodingEvidenceId) return false;
+  if (state.inspectedEvidenceIds.length > 0) return false;
+  return !hasUsableEvidence(state);
+}
+
+function buildOpponentTurnState(state) {
+  const nextPhase = state.exchangePhase === 'attack' ? 'counterAttack' : 'roundComplete';
+  return {
+    ...state,
+    phase: nextPhase,
+    activeEvidence: [],
+    activeQuiz: null,
+    quizAnswered: null,
+    explodingEvidenceId: null,
+  };
+}
+
     case 'SELECT_SIDE': {
       const playerSide = action.side;
       const opponentSide = playerSide === 'carnegie' ? 'mastery' : 'carnegie';
@@ -83,6 +109,7 @@ function gameReducer(state, action) {
         playerSide,
         opponentSide,
         phase: 'firstAttack',
+        audienceScore: INITIAL_AUDIENCE_SCORE,
         ...resetExchangeState(state),
         exchangePhase: 'attack',
       };
@@ -91,34 +118,56 @@ function gameReducer(state, action) {
     case 'ADVANCE_PHASE': {
       const transitions = {
         firstAttack: 'buildCase',
-        buildCase: 'launchArgument',
+        buildCase: 'battle',
+        battle: 'launchCrystals',
         counterAttack: 'buildCase',
         roundComplete:
-          state.roundIndex + 1 >= debateRounds.length ? 'finalChoice' : 'firstAttack',
+          state.roundIndex + 1 >= debateRounds.length ? 'debateResult' : 'firstAttack',
       };
 
       const nextPhase = transitions[state.phase];
       if (!nextPhase) return state;
 
-      if (state.phase === 'buildCase' && nextPhase === 'launchArgument') {
+      if (state.phase === 'buildCase' && nextPhase === 'battle') {
+        return {
+          ...state,
+          phase: 'battle',
+          activeEvidence: [],
+          inspectedEvidenceIds: [],
+          pendingEvidenceReveal: null,
+          activeQuiz: null,
+          quizAnswered: null,
+          failedEvidenceIds: [],
+          explodingEvidenceId: null,
+        };
+      }
+
+      if (state.phase === 'battle' && nextPhase === 'launchCrystals') {
         const inspected = state.activeEvidence.filter((e) =>
           state.inspectedEvidenceIds.includes(e.id)
         );
-        const argumentCard = buildArgumentFromEvidence(inspected);
+        const launchPayload = buildLaunchPayload(inspected);
         return {
           ...state,
-          phase: 'launchArgument',
-          argumentCard,
+          phase: 'launchCrystals',
+          launchPayload,
           throwPowerLocked: false,
           throwPower: 1,
+          throwAim: { x: 0, y: 0 },
         };
       }
 
       if (state.phase === 'counterAttack' && nextPhase === 'buildCase') {
+        const round = debateRounds[state.roundIndex];
+        const { delta } = getOpponentCounterShift(round, state.opponentSide);
+        const audienceUpdate = applyAudienceShift(state, delta);
+
         return {
           ...state,
           phase: 'buildCase',
           exchangePhase: 'counter',
+          audienceScore: audienceUpdate.audienceScore,
+          combatTexts: audienceUpdate.combatTexts,
           ...resetExchangeState(state),
         };
       }
@@ -140,42 +189,92 @@ function gameReducer(state, action) {
       const newItems = action.results
         .filter((item) => !state.evidenceInventory.some((e) => e.id === item.id))
         .slice(0, 1);
+      const found = newItems[0] ?? null;
       return {
         ...state,
         evidenceInventory: [...state.evidenceInventory, ...newItems],
         isSearching: false,
+        pendingEvidenceReveal: found,
       };
     }
 
+    case 'DISMISS_EVIDENCE_REVEAL': {
+      return { ...state, pendingEvidenceReveal: null };
+    }
+
     case 'MATERIALIZE_EVIDENCE': {
+      if (state.activeQuiz) return state;
+      if (
+        state.inspectedEvidenceIds.includes(action.id) ||
+        state.failedEvidenceIds.includes(action.id)
+      ) {
+        return state;
+      }
       if (state.activeEvidence.some((e) => e.id === action.id)) return state;
       const evidence = state.evidenceInventory.find((e) => e.id === action.id);
       if (!evidence) return state;
+
+      const quiz = getEvidenceQuiz(evidence, {
+        round: debateRounds[state.roundIndex],
+        playerSide: state.playerSide,
+        exchangePhase: state.exchangePhase,
+      });
+
       return {
         ...state,
         activeEvidence: [...state.activeEvidence, evidence],
+        activeQuiz: { evidenceId: action.id, ...quiz },
+        quizAnswered: null,
       };
+    }
+
+    case 'ANSWER_QUIZ': {
+      const { evidenceId, optionId } = action;
+      if (!state.activeQuiz || state.activeQuiz.evidenceId !== evidenceId) return state;
+
+      const selected = state.activeQuiz.options.find((o) => o.id === optionId);
+      const correct = Boolean(selected?.correct);
+
+      if (correct) {
+        return {
+          ...state,
+          inspectedEvidenceIds: [...state.inspectedEvidenceIds, evidenceId],
+          quizAnswered: { correct: true, selectedId: optionId },
+        };
+      }
+
+      return {
+        ...state,
+        failedEvidenceIds: [...state.failedEvidenceIds, evidenceId],
+        explodingEvidenceId: evidenceId,
+        quizAnswered: { correct: false, selectedId: optionId },
+      };
+    }
+
+    case 'DISMISS_QUIZ': {
+      const nextState = {
+        ...state,
+        activeQuiz: null,
+        quizAnswered: null,
+      };
+      return shouldSkipToOpponentTurn(nextState)
+        ? buildOpponentTurnState(nextState)
+        : nextState;
+    }
+
+    case 'EXPLOSION_COMPLETE': {
+      const nextState = {
+        ...state,
+        activeEvidence: state.activeEvidence.filter((e) => e.id !== action.id),
+        explodingEvidenceId: null,
+      };
+      return shouldSkipToOpponentTurn(nextState)
+        ? buildOpponentTurnState(nextState)
+        : nextState;
     }
 
     case 'SET_SEARCHING': {
       return { ...state, isSearching: action.value };
-    }
-
-    case 'INSPECT_EVIDENCE': {
-      if (state.inspectedEvidenceIds.includes(action.id)) return state;
-
-      const evidence = state.activeEvidence.find((e) => e.id === action.id);
-      if (!evidence) return state;
-
-      const newInspected = [...state.inspectedEvidenceIds, action.id];
-      const { metrics, deltas } = applyMetricImpact(state.metrics, evidence.effect || {}, 1);
-
-      return {
-        ...state,
-        inspectedEvidenceIds: newInspected,
-        metrics,
-        combatTexts: [...state.combatTexts, ...deltas],
-      };
     }
 
     case 'SET_THROW_AIM': {
@@ -190,48 +289,49 @@ function gameReducer(state, action) {
       };
     }
 
-    case 'THROW_CARD': {
+    case 'THROW_CRYSTALS': {
       if (!state.throwPowerLocked) return state;
       return {
         ...state,
         phase: 'throwAnim',
-        throwingCardId: state.argumentCard?.id,
+        isThrowingCrystals: true,
         throwPower: action.power ?? state.throwPower,
         throwAim: action.aim ?? state.throwAim,
       };
     }
 
     case 'THROW_COMPLETE': {
-      const card = state.argumentCard;
-      if (!card) {
+      const payload = state.launchPayload;
+
+      if (!payload?.crystals?.length) {
+        const nextPhase = state.exchangePhase === 'attack' ? 'counterAttack' : 'roundComplete';
         return {
           ...state,
-          phase: state.exchangePhase === 'attack' ? 'counterAttack' : 'roundComplete',
-          throwingCardId: null,
+          phase: nextPhase,
+          isThrowingCrystals: false,
         };
       }
 
       const evidenceMultiplier = getEvidenceMultiplier(state.inspectedEvidenceIds.length);
-      const totalMultiplier = evidenceMultiplier * state.throwPower;
-      const { metrics, deltas } = applyMetricImpact(state.metrics, card.metricImpact, totalMultiplier);
+      const delta = computeLaunchAudienceShift(
+        payload.crystals,
+        state.playerSide,
+        evidenceMultiplier,
+        state.throwPower
+      );
+      const audienceUpdate = applyAudienceShift(state, delta);
 
       const nextPhase = state.exchangePhase === 'attack' ? 'counterAttack' : 'roundComplete';
 
       return {
         ...state,
-        metrics,
-        combatTexts: [...state.combatTexts, ...deltas],
+        audienceScore: audienceUpdate.audienceScore,
+        combatTexts: audienceUpdate.combatTexts,
         phase: nextPhase,
-        throwingCardId: null,
+        isThrowingCrystals: false,
         throwPowerLocked: false,
-      };
-    }
-
-    case 'FINAL_CHOICE': {
-      return {
-        ...state,
-        finalChoice: action.choice,
-        phase: action.choice === 'hybrid' ? 'hybridMessage' : 'finalMessage',
+        launchPayload: null,
+        activeEvidence: [],
       };
     }
 
@@ -259,16 +359,16 @@ function CombatTextLayer({ texts, onRemove }) {
 
 function CombatText({ item, index, onRemove }) {
   useEffect(() => {
-    const timer = setTimeout(() => onRemove(item.id), 1500);
+    const timer = setTimeout(() => onRemove(item.id), 2000);
     return () => clearTimeout(timer);
   }, [item.id, onRemove]);
 
   return (
     <div
-      className={`combat-text ${item.positive ? 'positive' : 'negative'}`}
+      className={`combat-text audience-float ${item.positive ? 'positive' : 'negative'}`}
       style={{
-        left: `${45 + (index % 3) * 8}%`,
-        top: `${35 + Math.floor(index / 3) * 8}%`,
+        left: `${50 + (index % 3 - 1) * 12}%`,
+        top: `${42 + Math.floor(index / 3) * 10}%`,
       }}
     >
       {item.text}
@@ -288,8 +388,20 @@ export default function App() {
     dispatch({ type: 'SELECT_SIDE', side });
   }, []);
 
-  const handleInspectEvidence = useCallback((id) => {
-    dispatch({ type: 'INSPECT_EVIDENCE', id });
+  const handleDismissEvidenceReveal = useCallback(() => {
+    dispatch({ type: 'DISMISS_EVIDENCE_REVEAL' });
+  }, []);
+
+  const handleAnswerQuiz = useCallback((evidenceId, optionId) => {
+    dispatch({ type: 'ANSWER_QUIZ', evidenceId, optionId });
+  }, []);
+
+  const handleDismissQuiz = useCallback(() => {
+    dispatch({ type: 'DISMISS_QUIZ' });
+  }, []);
+
+  const handleExplosionComplete = useCallback((id) => {
+    dispatch({ type: 'EXPLOSION_COMPLETE', id });
   }, []);
 
   const handleSearchStart = useCallback(() => {
@@ -304,25 +416,37 @@ export default function App() {
     dispatch({ type: 'MATERIALIZE_EVIDENCE', id });
   }, []);
 
-  const handleThrowAim = useCallback((aim) => {
-    dispatch({ type: 'SET_THROW_AIM', aim });
-  }, []);
-
   const handleLockPower = useCallback((power) => {
     dispatch({ type: 'LOCK_THROW_POWER', power });
   }, []);
 
-  const handleThrowCard = useCallback(() => {
-    dispatch({ type: 'THROW_CARD' });
+  const handleThrowCrystals = useCallback(() => {
+    dispatch({ type: 'THROW_CRYSTALS' });
   }, []);
 
   const handleThrowComplete = useCallback(() => {
     dispatch({ type: 'THROW_COMPLETE' });
   }, []);
 
-  const handleFinalChoice = useCallback((choice) => {
-    dispatch({ type: 'FINAL_CHOICE', choice });
-  }, []);
+  const aimRef = useRef({ x: 0, y: 0 });
+
+  useEffect(() => {
+    if (state.phase !== 'launchCrystals') {
+      aimRef.current = { x: 0, y: 0 };
+      return undefined;
+    }
+
+    const onMove = (e) => {
+      aimRef.current = {
+        x: Math.max(-1, Math.min(1, aimRef.current.x + e.movementX * 0.004)),
+        y: Math.max(-0.5, Math.min(0.5, aimRef.current.y - e.movementY * 0.004)),
+      };
+      dispatch({ type: 'SET_THROW_AIM', aim: { ...aimRef.current } });
+    };
+
+    window.addEventListener('pointermove', onMove);
+    return () => window.removeEventListener('pointermove', onMove);
+  }, [state.phase]);
 
   const handleRemoveCombatText = useCallback((id) => {
     dispatch({ type: 'REMOVE_COMBAT_TEXT', id });
@@ -334,22 +458,27 @@ export default function App() {
   return (
     <div className={`app-root ${isDramatic ? 'arena-vignette' : ''}`}>
       {showArena && state.playerSide && (
-        <Canvas camera={{ position: [0, 1.55, 0.5], fov: 55, near: 0.1, far: 80 }}>
-          <Arena
+        <Canvas
+          camera={{ position: [0, 1.55, 0.5], fov: 50, near: 0.1, far: 80 }}
+          style={{ touchAction: 'none' }}
+        >
+          <Suspense fallback={null}>
+            <Arena
             playerSide={state.playerSide}
             opponentSide={state.opponentSide}
             round={round}
             phase={state.phase}
             activeEvidence={state.activeEvidence}
             inspectedEvidenceIds={state.inspectedEvidenceIds}
-            argumentCard={state.argumentCard}
-            throwingCardId={state.throwingCardId}
+            failedEvidenceIds={state.failedEvidenceIds}
+            explodingEvidenceId={state.explodingEvidenceId}
+            isThrowingCrystals={state.isThrowingCrystals}
             throwPower={state.throwPower}
             throwAim={state.throwAim}
-            onInspectEvidence={handleInspectEvidence}
-            onThrowAim={handleThrowAim}
+            onExplosionComplete={handleExplosionComplete}
             onThrowComplete={handleThrowComplete}
-          />
+            />
+          </Suspense>
         </Canvas>
       )}
 
@@ -357,21 +486,22 @@ export default function App() {
 
       <HUD
         state={state}
-        dispatch={dispatch}
         round={round}
         onAdvance={handleAdvance}
         onSelectSide={handleSelectSide}
         onSearchStart={handleSearchStart}
         onSearch={handleSearch}
         onMaterializeEvidence={handleMaterializeEvidence}
-        onThrowCard={handleThrowCard}
+        onDismissEvidenceReveal={handleDismissEvidenceReveal}
+        onAnswerQuiz={handleAnswerQuiz}
+        onDismissQuiz={handleDismissQuiz}
+        onThrowCrystals={handleThrowCrystals}
         onLockPower={handleLockPower}
-        onFinalChoice={handleFinalChoice}
       />
 
       <CombatTextLayer texts={state.combatTexts} onRemove={handleRemoveCombatText} />
 
-      {showArena && ['buildCase', 'launchArgument', 'throwAnim'].includes(state.phase) && (
+      {showArena && ['battle', 'launchCrystals', 'throwAnim'].includes(state.phase) && (
         <div className="fp-crosshair" aria-hidden="true" />
       )}
     </div>

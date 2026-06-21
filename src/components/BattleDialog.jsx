@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 
-export default function BattleDialog({ speaker, text, onContinue }) {
+export default function BattleDialog({ speaker, text, subtitle, onContinue }) {
   const [displayed, setDisplayed] = useState('');
   const [done, setDone] = useState(false);
 
@@ -36,9 +36,10 @@ export default function BattleDialog({ speaker, text, onContinue }) {
       tabIndex={0}
       onKeyDown={(e) => e.key === 'Enter' && handleClick()}
     >
-      <div className="battle-dialog-box">
-        <p className="battle-dialog-speaker">{speaker}</p>
-        <p className="battle-dialog-text">
+      <div className="rpg-box battle-dialog-box">
+        <p className="rpg-heading battle-dialog-speaker">{speaker}</p>
+        {subtitle && <p className="battle-dialog-subtitle">{subtitle}</p>}
+        <p className="rpg-body battle-dialog-text">
           {displayed}
           {!done && <span className="battle-dialog-cursor">▌</span>}
         </p>

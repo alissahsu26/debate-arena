@@ -1,26 +1,14 @@
-import { METRIC_KEYS } from '../data/debateRounds';
+import { getEvidencePersuasion } from './audienceMeter';
 
-export function buildArgumentFromEvidence(inspectedItems) {
+export function buildLaunchPayload(inspectedItems) {
   if (!inspectedItems.length) {
     return {
-      id: 'arg-empty',
-      text: 'I need more evidence to make my case.',
-      metricImpact: {},
+      id: 'launch-empty',
+      text: 'No crystals ready to launch.',
+      sourceIds: [],
+      crystals: [],
     };
   }
-
-  const metricImpact = {};
-  METRIC_KEYS.forEach((key) => {
-    metricImpact[key] = 0;
-  });
-
-  inspectedItems.forEach((item) => {
-    Object.entries(item.effect || {}).forEach(([key, val]) => {
-      if (metricImpact[key] !== undefined) {
-        metricImpact[key] += val;
-      }
-    });
-  });
 
   const primaryInsight = inspectedItems[0].insight;
   const suffix =
@@ -33,11 +21,17 @@ export function buildArgumentFromEvidence(inspectedItems) {
       : `${primaryInsight}${suffix}`;
 
   return {
-    id: `arg-${inspectedItems.map((i) => i.id).join('-')}`,
+    id: `launch-${inspectedItems.map((i) => i.id).join('-')}`,
     text,
-    metricImpact,
     sourceIds: inspectedItems.map((i) => i.id),
+    crystals: inspectedItems,
+    totalPersuasion: inspectedItems.reduce((sum, item) => sum + getEvidencePersuasion(item), 0),
   };
+}
+
+/** @deprecated use buildLaunchPayload */
+export function buildArgumentFromEvidence(inspectedItems) {
+  return buildLaunchPayload(inspectedItems);
 }
 
 export function getEvidenceMultiplier(inspectedCount) {

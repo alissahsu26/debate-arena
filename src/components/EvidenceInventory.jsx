@@ -1,58 +1,81 @@
-const CATEGORY_COLORS = {
-  'District Data': '#4A90D9',
-  'Teacher Perspectives': '#9B59B6',
-  'Academic Research': '#FF9800',
-};
+import { CATEGORY_COLORS, CATEGORY_SHORT } from '../data/crystalStyles';
 
 export default function EvidenceInventory({
   inventory,
   materializedIds,
   inspectedIds,
+  failedIds = [],
   onMaterialize,
+  canMaterialize = true,
+  quizLocked = false,
 }) {
   if (inventory.length === 0) return null;
 
+  const hint = !canMaterialize
+    ? 'Evidence collected — press Begin Fight when you are set.'
+    : quizLocked
+      ? 'Finish the quiz before deploying another crystal.'
+      : materializedIds.length === 0
+        ? 'Choose an item to deploy a crystal and complete the argument.'
+        : `${inspectedIds.length} confirmed — deploy more or launch your argument.`;
+
   return (
     <div className="evidence-inventory">
-      <div className="evidence-inventory-header">
-        <span className="evidence-inventory-title">Evidence Inventory</span>
-        <span className="evidence-inventory-count">{inventory.length} found</span>
-      </div>
-      <div className="evidence-inventory-slots">
-        {inventory.map((item) => {
-          const materialized = materializedIds.includes(item.id);
-          const inspected = inspectedIds.includes(item.id);
-          const color = CATEGORY_COLORS[item.category] || '#00E5FF';
+      <div className="rpg-box evidence-inventory-box">
+        <div className="evidence-inventory-header">
+          <span className="rpg-heading evidence-inventory-title">Items</span>
+          <span className="evidence-inventory-count">×{inventory.length}</span>
+        </div>
+        <div className="evidence-inventory-slots">
+          {inventory.map((item) => {
+            const materialized = materializedIds.includes(item.id);
+            const confirmed = inspectedIds.includes(item.id);
+            const failed = failedIds.includes(item.id);
+            const color = CATEGORY_COLORS[item.category] || '#58D8F8';
+            const disabled =
+              !canMaterialize || materialized || failed || (quizLocked && !materialized);
 
-          return (
-            <button
-              key={item.id}
-              type="button"
-              className={`inventory-slot ${materialized ? 'materialized' : ''} ${inspected ? 'inspected' : ''}`}
-              style={{ '--slot-color': color }}
-              disabled={materialized}
-              onClick={() => onMaterialize(item.id)}
-              title={
-                inspected
-                  ? `${item.label} — inspected`
-                  : materialized
-                    ? `${item.label} — in arena`
-                    : `Click to materialize ${item.label}`
-              }
-            >
-              <span className="inventory-slot-gem" />
-              <span className="inventory-slot-label">{item.category}</span>
-              {materialized && !inspected && <span className="inventory-slot-badge">◇</span>}
-              {inspected && <span className="inventory-slot-badge">✓</span>}
-            </button>
-          );
-        })}
+            return (
+              <button
+                key={item.id}
+                type="button"
+                className={`inventory-slot ${materialized ? 'materialized' : ''} ${confirmed ? 'inspected' : ''} ${failed ? 'failed' : ''} ${!canMaterialize ? 'locked' : ''}`}
+                style={{ '--slot-color': color }}
+                disabled={disabled}
+                onClick={() => onMaterialize(item.id)}
+                title={
+                  failed
+                    ? `${item.label} — crystal shattered`
+                    : !canMaterialize
+                      ? `${item.label} — deploy in battle`
+                      : confirmed
+                        ? `${item.label} — confirmed`
+                        : materialized
+                          ? `${item.label} — quiz in progress`
+                          : `Click to deploy ${item.label}`
+                }
+              >
+                {!disabled && canMaterialize && (
+                  <span className="inventory-slot-cursor" aria-hidden="true">▶</span>
+                )}
+                <span className="inventory-slot-icon">
+                  <span className="inventory-slot-gem" />
+                  <span className="inventory-slot-shine" aria-hidden="true" />
+                </span>
+                <span className="inventory-slot-label">
+                  {CATEGORY_SHORT[item.category] || item.category}
+                </span>
+                {canMaterialize && materialized && !confirmed && !failed && (
+                  <span className="inventory-slot-badge">?</span>
+                )}
+                {confirmed && <span className="inventory-slot-badge inspected">OK</span>}
+                {failed && <span className="inventory-slot-badge failed">X</span>}
+              </button>
+            );
+          })}
+        </div>
+        <p className="rpg-hint evidence-inventory-hint">{hint}</p>
       </div>
-      <p className="evidence-inventory-hint">
-        {materializedIds.length === 0
-          ? 'Click evidence to materialize a crystal in the arena.'
-          : `${inspectedIds.length} inspected — click crystals in the arena to read them.`}
-      </p>
     </div>
   );
 }

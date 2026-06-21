@@ -1,132 +1,153 @@
 import { useRef, useEffect, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Html, useGLTF } from '@react-three/drei';
+import { Html } from '@react-three/drei';
 import * as THREE from 'three';
 import { CHARACTERS } from '../data/debateRounds';
-import scholarModel from '../assets/3D-models/scholar.glb?url';
-import wizardModel from '../assets/3D-models/wizard.glb?url';
 
-const MODEL_CONFIG = {
-  carnegie: { url: scholarModel, facingY: Math.PI },
-  mastery: { url: wizardModel, facingY: Math.PI },
-};
+const TARGET_HEIGHT = 2.8;
+const DAMAGE_COLOR = '#ff3333';
 
-const TARGET_HEIGHT = 2.5;
-const LABEL_OFFSET = 0.35;
+function CharacterModel({ type, damageRef }) {
+  const character = CHARACTERS[type];
+  const materialRefs = useRef([]);
 
-useGLTF.preload(scholarModel);
-useGLTF.preload(wizardModel);
+  const parts = useMemo(() => {
+    const color = character.color;
+    const shared = [
+      { geometry: 'capsule', args: [0.45, 1.2, 4, 12], position: [0, 0.9, 0], color },
+      { geometry: 'sphere', args: [0.42, 16, 16], position: [0, 2.05, 0], color },
+    ];
 
-function getMeshBounds(root) {
-  const box = new THREE.Box3();
-  const temp = new THREE.Box3();
-  root.traverse((child) => {
-    if (child.isMesh) {
-      temp.setFromObject(child);
-      if (!temp.isEmpty()) box.union(temp);
+    if (type === 'carnegie') {
+      return [
+        ...shared,
+        {
+          geometry: 'cone',
+          args: [0.12, 0.35, 4],
+          position: [-0.35, 2.35, 0.05],
+          rotation: [0, 0, -0.4],
+          color,
+        },
+        {
+          geometry: 'cone',
+          args: [0.12, 0.35, 4],
+          position: [0.35, 2.35, 0.05],
+          rotation: [0, 0, 0.4],
+          color,
+        },
+        {
+          geometry: 'box',
+          args: [0.5, 0.08, 0.08],
+          position: [0, 2.15, 0.38],
+          color: '#222222',
+        },
+      ];
     }
-  });
-  return box;
-}
 
-function prepareModel(scene) {
-  const clone = scene.clone(true);
-  const box = getMeshBounds(clone);
+    return [
+      ...shared,
+      {
+        geometry: 'cone',
+        args: [0.25, 0.55, 8],
+        position: [0, 2.55, 0],
+        color: '#4a0080',
+      },
+      {
+        geometry: 'box',
+        args: [0.12, 0.7, 0.12],
+        position: [0.55, 1.1, 0],
+        rotation: [0, 0, -0.5],
+        color: '#228822',
+      },
+    ];
+  }, [character.color, type]);
 
-  if (box.isEmpty()) return { object: clone, height: TARGET_HEIGHT };
+  const baseColors = useMemo(
+    () => parts.map((part) => new THREE.Color(part.color)),
+    [parts]
+  );
+  const flashColor = useMemo(() => new THREE.Color(DAMAGE_COLOR), []);
+  const currentColor = useMemo(() => new THREE.Color(), []);
 
-  const size = new THREE.Vector3();
-  box.getSize(size);
-  const height = size.y || TARGET_HEIGHT;
-  const scale = TARGET_HEIGHT / height;
-  clone.scale.setScalar(scale);
-
-  const scaledBox = getMeshBounds(clone);
-  const center = new THREE.Vector3();
-  scaledBox.getCenter(center);
-  clone.position.set(-center.x, -scaledBox.min.y, -center.z);
-
-  clone.traverse((child) => {
-    if (!child.isMesh) return;
-    child.frustumCulled = false;
-    child.castShadow = true;
-    child.receiveShadow = true;
-
-    const materials = Array.isArray(child.material) ? child.material : [child.material];
-    materials.forEach((mat) => {
-      if (!mat) return;
-      mat.side = THREE.DoubleSide;
-      if (mat.emissive) {
-        mat.emissive = new THREE.Color(0x333344);
-        mat.emissiveIntensity = 0.35;
-      }
+  useFrame(() => {
+    const flash = damageRef.current;
+    materialRefs.current.forEach((material, index) => {
+      if (!material) return;
+      currentColor.copy(baseColors[index]).lerp(flashColor, flash);
+      material.color.copy(currentColor);
     });
   });
 
-  return { object: clone, height: TARGET_HEIGHT };
-}
-
-function CharacterModel({ type }) {
-  const { scene } = useGLTF(MODEL_CONFIG[type].url);
-  const { object, facingY } = useMemo(() => {
-    const prepared = prepareModel(scene);
-    return { object: prepared.object, facingY: MODEL_CONFIG[type].facingY };
-  }, [scene, type]);
-
   return (
-    <group rotation={[0, facingY, 0]}>
-      <primitive object={object} />
+    <group rotation={[0, Math.PI, 0]}>
+      {parts.map((part, index) => (
+        <mesh
+          key={index}
+          position={part.position}
+          rotation={part.rotation || [0, 0, 0]}
+        >
+          {part.geometry === 'capsule' && <capsuleGeometry args={part.args} />}
+          {part.geometry === 'sphere' && <sphereGeometry args={part.args} />}
+          {part.geometry === 'cone' && <coneGeometry args={part.args} />}
+          {part.geometry === 'box' && <boxGeometry args={part.args} />}
+          <meshBasicMaterial
+            ref={(material) => {
+              materialRefs.current[index] = material;
+            }}
+            color={part.color}
+            toneMapped={false}
+          />
+        </mesh>
+      ))}
     </group>
   );
 }
 
-export default function Character({
+function CharacterInner({
   type,
-  position = [0, 0, 0],
-  rotation = [0, 0, 0],
-  scale = 1,
-  isPlayer = false,
-  isDramatic = false,
+  position,
+  rotation,
+  scale,
+  isPlayer,
+  isDramatic,
+  hitTrigger = 0,
 }) {
   const groupRef = useRef();
   const entranceRef = useRef(0);
+  const damageRef = useRef(0);
   const character = CHARACTERS[type];
 
   useEffect(() => {
     if (isDramatic) entranceRef.current = 0;
   }, [isDramatic]);
 
-  useFrame((state) => {
+  useEffect(() => {
+    if (hitTrigger > 0) damageRef.current = 1;
+  }, [hitTrigger]);
+
+  useFrame((state, delta) => {
     if (!groupRef.current) return;
+
+    if (damageRef.current > 0) {
+      damageRef.current = Math.max(0, damageRef.current - delta * 2.8);
+    }
+
     if (isDramatic && entranceRef.current < 1) {
       entranceRef.current = Math.min(entranceRef.current + 0.015, 1);
     }
-    const bob = Math.sin(state.clock.elapsedTime * 2) * (isDramatic ? 0.08 : 0.05);
-    const scaleBoost = isDramatic ? 1 + entranceRef.current * 0.06 : 1;
+    const bob = Math.sin(state.clock.elapsedTime * 2) * (isDramatic ? 0.06 : 0.04);
+    const scaleBoost = isDramatic ? 1 + entranceRef.current * 0.05 : 1;
     groupRef.current.position.set(position[0], position[1] + bob, position[2]);
     groupRef.current.scale.setScalar(scale * scaleBoost);
   });
 
-  const labelY = TARGET_HEIGHT + LABEL_OFFSET;
+  const labelY = TARGET_HEIGHT + 0.4;
 
   return (
     <group ref={groupRef} position={position} rotation={rotation}>
-      <CharacterModel type={type} />
+      <CharacterModel type={type} damageRef={damageRef} />
 
-      <pointLight
-        position={[0, 2.2, 1.2]}
-        intensity={isDramatic ? 4 : 2.5}
-        color="#ffffff"
-        distance={10}
-      />
-      {isDramatic && (
-        <pointLight
-          position={[0, 2, 0.5]}
-          intensity={3}
-          color={character.color}
-          distance={10}
-        />
-      )}
+      <pointLight position={[0, 2.5, 2]} intensity={3} color="#ffffff" distance={14} />
 
       <Html
         center
@@ -148,4 +169,8 @@ export default function Character({
       </Html>
     </group>
   );
+}
+
+export default function Character(props) {
+  return <CharacterInner {...props} />;
 }

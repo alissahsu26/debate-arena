@@ -1,34 +1,20 @@
 // TODO: load debate content from RAG API or CMS
 
-export const METRIC_KEYS = ['learning', 'equity', 'scalability', 'engagement'];
-
-export const METRIC_LABELS = {
-  learning: 'Learning',
-  equity: 'Equity',
-  scalability: 'Scalability',
-  engagement: 'Engagement',
-};
-
-export const INITIAL_METRICS = {
-  learning: 50,
-  equity: 50,
-  scalability: 50,
-  engagement: 50,
-};
+export const INITIAL_AUDIENCE_SCORE = 0;
 
 export const CHARACTERS = {
   carnegie: {
     id: 'carnegie',
-    label: 'Carnegie Scholar',
+    label: 'Cat Scholar',
     side: 'Carnegie Units',
-    color: '#4A90D9',
+    color: '#0080ff',
     description: 'Students progress through structured courses and seat-time requirements.',
   },
   mastery: {
     id: 'mastery',
-    label: 'Mastery Wizard',
+    label: 'Mastery Lizard Wizard',
     side: 'Mastery Learning',
-    color: '#9B59B6',
+    color: '#ff0000',
     description: 'Students progress after demonstrating understanding.',
   },
 };
@@ -44,8 +30,8 @@ export const HYBRID_MESSAGE =
 
 export const SUGGESTED_SEARCHES = ['District Data', 'Teacher Perspectives', 'Academic Research'];
 
-function poolItem(id, category, label, insight, effect, keywords, sides) {
-  return { id, category, label, insight, effect, keywords, sides };
+function poolItem(id, category, label, insight, effect, keywords, sides, quiz = null) {
+  return { id, category, label, insight, effect, keywords, sides, quiz };
 }
 
 export const debateRounds = [
@@ -62,6 +48,7 @@ export const debateRounds = [
       carnegie:
         'Seat-time credits let students coast. How do you know they actually learned anything?',
     },
+    opponentCounterStrength: 15,
     suggestedSearches: SUGGESTED_SEARCHES,
     attackEvidencePool: [
       poolItem(
@@ -71,7 +58,19 @@ export const debateRounds = [
         'Several districts have successfully implemented competency-based systems using shared rubrics and technology.',
         { scalability: 20 },
         ['scale', 'district', '2000', 'students'],
-        ['mastery']
+        ['mastery'],
+        {
+          prompt: 'Complete the argument: "Mastery can scale because ______."',
+          options: [
+            { id: 'A', text: 'students enjoy it more' },
+            {
+              id: 'B',
+              text: 'districts have implemented it using technology and shared rubrics',
+              correct: true,
+            },
+            { id: 'C', text: 'colleges prefer it' },
+          ],
+        }
       ),
       poolItem(
         'r1a-tp1',
@@ -217,6 +216,7 @@ export const debateRounds = [
       carnegie:
         'Without pacing guardrails, struggling students fall further behind while advanced students wait.',
     },
+    opponentCounterStrength: 15,
     suggestedSearches: SUGGESTED_SEARCHES,
     attackEvidencePool: [
       poolItem(
@@ -372,6 +372,7 @@ export const debateRounds = [
       carnegie:
         'Carnegie Units are the lingua franca of American education. Replacing them isolates your students.',
     },
+    opponentCounterStrength: 15,
     suggestedSearches: SUGGESTED_SEARCHES,
     attackEvidencePool: [
       poolItem(

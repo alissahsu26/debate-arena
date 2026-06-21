@@ -1,10 +1,10 @@
+import { useCallback, useState } from 'react';
 import Character from './Character';
 import EvidenceCrystal from './EvidenceCrystal';
-import ArgumentCard from './ArgumentCard';
 import FirstPersonCamera from './FirstPersonCamera';
 
 const CRYSTAL_POSITIONS = [
-  [-1.5, 0.35, -1.9],
+  [-2.5, 1, -3.9],
   [0, 0.55, -2.4],
   [1.5, 0.35, -1.9],
   [-2.2, 0.45, -2.2],
@@ -12,26 +12,25 @@ const CRYSTAL_POSITIONS = [
   [0, 0.75, -1.6],
 ];
 
-const OPPONENT_POSITION = [0, 0, -5];
+const OPPONENT_POSITION = [0, 0, -4.5];
 const OPPONENT_ROTATION = [0, 0, 0];
-const CARD_POSITION = [0.85, 1.0, -0.7];
-const OPPONENT_LOOK_Y = 1.4;
+const OPPONENT_LOOK_Y = 1.5;
 
 export default function Arena({
   opponentSide,
   phase,
   activeEvidence,
   inspectedEvidenceIds,
-  argumentCard,
-  throwingCardId,
+  failedEvidenceIds,
+  explodingEvidenceId,
+  isThrowingCrystals,
   throwPower,
   throwAim,
-  onInspectEvidence,
-  onThrowAim,
+  onExplosionComplete,
   onThrowComplete,
 }) {
-  const showCrystals = ['buildCase', 'launchArgument', 'throwAnim'].includes(phase);
-  const showCard = ['launchArgument', 'throwAnim'].includes(phase) && argumentCard;
+  const showCrystals = ['battle', 'launchCrystals', 'throwAnim'].includes(phase);
+  const isThrowPhase = phase === 'throwAnim' && isThrowingCrystals;
   const isDramatic = ['firstAttack', 'counterAttack'].includes(phase);
 
   const ambientIntensity = isDramatic ? 0.45 : 0.75;
@@ -43,6 +42,15 @@ export default function Arena({
   const targetOffset = throwAim
     ? [OPPONENT_POSITION[0] + throwAim.x * 2, OPPONENT_LOOK_Y + throwAim.y * 1.5, OPPONENT_POSITION[2]]
     : [OPPONENT_POSITION[0], OPPONENT_LOOK_Y, OPPONENT_POSITION[2]];
+
+  const visibleEvidence =
+    phase === 'launchCrystals' || phase === 'throwAnim'
+      ? activeEvidence.filter((e) => inspectedEvidenceIds.includes(e.id))
+      : activeEvidence;
+
+  const confirmedCount = visibleEvidence.length;
+  const [hitTrigger, setHitTrigger] = useState(0);
+  const handleCrystalHit = useCallback(() => setHitTrigger((n) => n + 1), []);
 
   return (
     <>
@@ -80,34 +88,32 @@ export default function Arena({
         type={opponentSide}
         position={OPPONENT_POSITION}
         rotation={OPPONENT_ROTATION}
-        scale={1.6}
+        scale={1.2}
         isDramatic={isDramatic}
+        hitTrigger={hitTrigger}
       />
 
-      {activeEvidence.map((item, index) => (
+      {visibleEvidence.map((item, index) => (
         <EvidenceCrystal
           key={item.id}
           id={item.id}
           evidence={item}
           position={CRYSTAL_POSITIONS[index] || [0, 1.5, -2]}
-          inspected={inspectedEvidenceIds.includes(item.id)}
-          onInspect={onInspectEvidence}
+          confirmed={inspectedEvidenceIds.includes(item.id)}
+          exploding={explodingEvidenceId === item.id}
+          failed={failedEvidenceIds.includes(item.id)}
+          isThrowing={isThrowPhase}
+          throwPower={throwPower}
+          targetPosition={targetOffset}
+          throwIndex={index}
+          onExplosionComplete={onExplosionComplete}
+          onHit={isThrowPhase ? handleCrystalHit : undefined}
+          onThrowComplete={
+            isThrowPhase && index === confirmedCount - 1 ? onThrowComplete : undefined
+          }
           active={showCrystals}
         />
       ))}
-
-      {showCard && (
-        <ArgumentCard
-          card={argumentCard}
-          position={CARD_POSITION}
-          targetPosition={targetOffset}
-          isThrowing={throwingCardId === argumentCard.id}
-          throwPower={throwPower}
-          onThrowAim={onThrowAim}
-          onThrowComplete={onThrowComplete}
-          active
-        />
-      )}
 
       <FirstPersonCamera opponentPosition={OPPONENT_POSITION} />
     </>

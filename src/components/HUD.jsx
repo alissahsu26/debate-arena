@@ -1,54 +1,28 @@
 import {
   CHARACTERS,
-  METRIC_KEYS,
-  METRIC_LABELS,
-  FINAL_CHOICES,
   HYBRID_MESSAGE,
   debateRounds,
   getOpponentChallenge,
   getOpponentCounter,
 } from '../data/debateRounds';
+import { CATEGORY_COLORS } from '../data/crystalStyles';
+import { determineDebateOutcome } from '../services/audienceMeter';
 import Onboarding from './Onboarding';
 import BattleDialog from './BattleDialog';
 import BuildYourCase from './BuildYourCase';
+import BattleStage from './BattleStage';
 import EvidenceInventory from './EvidenceInventory';
+import EvidenceFound from './EvidenceFound';
+import EvidenceQuiz from './EvidenceQuiz';
 import ThrowTimingBar from './ThrowTimingBar';
-
-const METRIC_COLORS = {
-  learning: '#4CAF50',
-  equity: '#2196F3',
-  scalability: '#FF9800',
-  engagement: '#E91E63',
-};
-
-function MetricBars({ metrics }) {
-  return (
-    <div className="metric-bars">
-      {METRIC_KEYS.map((key) => (
-        <div key={key} className="metric-row">
-          <span className="metric-label">{METRIC_LABELS[key]}</span>
-          <div className="metric-track">
-            <div
-              className="metric-fill"
-              style={{
-                width: `${metrics[key]}%`,
-                backgroundColor: METRIC_COLORS[key],
-              }}
-            />
-          </div>
-          <span className="metric-value">{metrics[key]}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
+import AudienceMeter from './AudienceMeter';
 
 function Panel({ title, children, actions }) {
   return (
-    <div className="hud-panel">
-      {title && <h2 className="hud-title">{title}</h2>}
-      <div className="hud-body">{children}</div>
-      {actions && <div className="hud-actions">{actions}</div>}
+    <div className="rpg-box hud-rpg-panel">
+      {title && <h2 className="rpg-heading">{title}</h2>}
+      <div className="hud-rpg-body">{children}</div>
+      {actions && <div className="hud-rpg-actions">{actions}</div>}
     </div>
   );
 }
@@ -61,78 +35,56 @@ export default function HUD({
   onSearchStart,
   onSearch,
   onMaterializeEvidence,
-  onThrowCard,
+  onDismissEvidenceReveal,
+  onAnswerQuiz,
+  onDismissQuiz,
+  onThrowCrystals,
   onLockPower,
-  onFinalChoice,
 }) {
   const {
     phase,
     playerSide,
     opponentSide,
-    metrics,
+    audienceScore,
     roundIndex,
     evidenceInventory,
     activeEvidence,
     inspectedEvidenceIds,
     exchangePhase,
-    argumentCard,
+    launchPayload,
     throwPowerLocked,
     throwPower,
     isSearching,
+    pendingEvidenceReveal,
+    activeQuiz,
+    quizAnswered,
+    failedEvidenceIds,
   } = state;
 
   const opponent = CHARACTERS[opponentSide];
-  const player = CHARACTERS[playerSide];
 
   if (phase === 'onboarding') {
     return (
-      <div className="hud-overlay">
-        <MetricBars metrics={metrics} />
+      <div className="hud-overlay hud-overlay--onboarding">
         <Onboarding onSelectSide={onSelectSide} />
       </div>
     );
   }
 
-  if (phase === 'finalChoice') {
-    return (
-      <div className="hud-overlay">
-        <MetricBars metrics={metrics} />
-        <Panel title="Debate Complete — Final Scores">
-          <p className="hud-text">After debating, what model would you build?</p>
-          <div className="side-buttons">
-            <button type="button" className="btn btn-carnegie" onClick={() => onFinalChoice('carnegie')}>
-              {FINAL_CHOICES.carnegie}
-            </button>
-            <button type="button" className="btn btn-mastery" onClick={() => onFinalChoice('mastery')}>
-              {FINAL_CHOICES.mastery}
-            </button>
-            <button type="button" className="btn btn-hybrid" onClick={() => onFinalChoice('hybrid')}>
-              {FINAL_CHOICES.hybrid}
-            </button>
-          </div>
-        </Panel>
-      </div>
-    );
-  }
+  if (phase === 'debateResult') {
+    const outcome = determineDebateOutcome(audienceScore);
 
-  if (phase === 'hybridMessage') {
     return (
       <div className="hud-overlay">
-        <MetricBars metrics={metrics} />
-        <Panel title={`You chose: ${FINAL_CHOICES.hybrid}`}>
-          <p className="hud-text hybrid-message">{HYBRID_MESSAGE}</p>
-          <p className="hud-text muted">Thanks for playing the debate arena.</p>
-        </Panel>
-      </div>
-    );
-  }
-
-  if (phase === 'finalMessage') {
-    return (
-      <div className="hud-overlay">
-        <MetricBars metrics={metrics} />
-        <Panel title={`You chose: ${FINAL_CHOICES[state.finalChoice]}`}>
-          <p className="hud-text muted">Thanks for playing the debate arena.</p>
+        <div className="audience-meter-wrap audience-meter-wrap--centered">
+          <AudienceMeter score={audienceScore} />
+        </div>
+        <Panel title={outcome.label}>
+          <p className="rpg-body">{outcome.description}</p>
+          {outcome.recommended === 'hybrid' && (
+            <p className="rpg-body hybrid-message">{HYBRID_MESSAGE}</p>
+          )}
+          <p className="rpg-hint">Thanks for playing the debate arena.</p>
         </Panel>
       </div>
     );
@@ -145,51 +97,124 @@ export default function HUD({
 
   return (
     <div className="hud-overlay">
-      <MetricBars metrics={metrics} />
+      <div className="audience-meter-wrap">
+        <AudienceMeter score={audienceScore} />
+      </div>
 
       <div className="round-badge">
         Round {roundIndex + 1} of {debateRounds.length}
         {exchangePhase === 'counter' && ' — Counter'}
       </div>
 
-      {(phase === 'firstAttack' || phase === 'counterAttack') && (
+      {phase === 'firstAttack' && (
         <BattleDialog
           speaker={opponent.label}
           text={challengeText}
+          subtitle="Opening challenge"
+          onContinue={onAdvance}
+        />
+      )}
+
+      {phase === 'counterAttack' && (
+        <BattleDialog
+          speaker={opponent.label}
+          text={challengeText}
+          subtitle="Opponent counterargument — press continue to see the audience react"
           onContinue={onAdvance}
         />
       )}
 
       {phase === 'buildCase' && (
         <>
-          <div className="hud-panel-build">
-            <BuildYourCase
-              round={round}
-              roundIndex={roundIndex}
-              playerSide={playerSide}
-              exchangePhase={exchangePhase}
-              evidenceInventory={evidenceInventory}
-              inspectedEvidenceIds={inspectedEvidenceIds}
-              onSearchStart={onSearchStart}
-              onSearch={onSearch}
-              onAdvance={onAdvance}
-              isSearching={isSearching}
+          <BuildYourCase
+            round={round}
+            roundIndex={roundIndex}
+            playerSide={playerSide}
+            exchangePhase={exchangePhase}
+            evidenceInventory={evidenceInventory}
+            onSearchStart={onSearchStart}
+            onSearch={onSearch}
+            onAdvance={onAdvance}
+            isSearching={isSearching}
+            pendingEvidenceReveal={pendingEvidenceReveal}
+          />
+          {pendingEvidenceReveal && (
+            <EvidenceFound
+              evidence={pendingEvidenceReveal}
+              searchNumber={evidenceInventory.length}
+              maxSearches={3}
+              onDismiss={onDismissEvidenceReveal}
             />
-          </div>
+          )}
           <EvidenceInventory
             inventory={evidenceInventory}
-            materializedIds={activeEvidence.map((e) => e.id)}
-            inspectedIds={inspectedEvidenceIds}
+            materializedIds={[]}
+            inspectedIds={[]}
             onMaterialize={onMaterializeEvidence}
+            canMaterialize={false}
           />
         </>
       )}
 
-      {phase === 'launchArgument' && argumentCard && (
+      {phase === 'battle' && (
+        <>
+          <BattleStage
+            inspectedCount={inspectedEvidenceIds.length}
+            inventoryCount={evidenceInventory.length}
+            activeQuiz={activeQuiz}
+            onAdvance={onAdvance}
+          />
+          {activeQuiz && (
+            <EvidenceQuiz
+              quiz={activeQuiz}
+              evidenceLabel={
+                evidenceInventory.find((e) => e.id === activeQuiz.evidenceId)?.label
+              }
+              crystalCategory={
+                evidenceInventory.find((e) => e.id === activeQuiz.evidenceId)?.category
+              }
+              answered={quizAnswered}
+              onAnswer={(optionId) => onAnswerQuiz(activeQuiz.evidenceId, optionId)}
+              onDismiss={onDismissQuiz}
+            />
+          )}
+          <EvidenceInventory
+            inventory={evidenceInventory}
+            materializedIds={activeEvidence.map((e) => e.id)}
+            inspectedIds={inspectedEvidenceIds}
+            failedIds={failedEvidenceIds}
+            onMaterialize={onMaterializeEvidence}
+            canMaterialize
+            quizLocked={Boolean(activeQuiz)}
+          />
+        </>
+      )}
+
+      {phase === 'launchCrystals' && launchPayload && (
         <div className="hud-panel-launch">
-          <Panel title="Launch Your Argument">
-            <p className="hud-text argument-preview">"{argumentCard.text}"</p>
-            <p className="hud-text muted">You are defending {player.side}.</p>
+          <Panel title="Launch Attack">
+            <ul className="crystal-launch-list">
+              {(launchPayload.crystals || []).map((crystal) => (
+                <li
+                  key={crystal.id}
+                  className="crystal-launch-item"
+                  style={{ '--crystal-color': CATEGORY_COLORS[crystal.category] || '#58D8F8' }}
+                >
+                  <div className="crystal-launch-row">
+                    <span className="crystal-launch-gem" aria-hidden="true">
+                      <span className="crystal-launch-shine" />
+                    </span>
+                    <div className="crystal-launch-copy">
+                      <span className="crystal-launch-label">{crystal.label}</span>
+                      <span className="crystal-launch-insight">{crystal.insight}</span>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <p className="rpg-hint">
+              Persuade the audience — aim, lock power, and launch toward {opponent.label}.
+            </p>
           </Panel>
           <ThrowTimingBar
             onLock={onLockPower}
@@ -197,8 +222,8 @@ export default function HUD({
             throwPower={throwPower}
           />
           {throwPowerLocked && (
-            <button type="button" className="btn btn-primary throw-btn" onClick={onThrowCard}>
-              Throw Argument!
+            <button type="button" className="rpg-suggest-btn rpg-action-btn throw-btn" onClick={onThrowCrystals}>
+              Launch Attack!
             </button>
           )}
         </div>
@@ -206,8 +231,10 @@ export default function HUD({
 
       {phase === 'throwAnim' && (
         <div className="hud-panel-launch">
-          <Panel title="Argument Incoming!">
-            <p className="hud-text muted">Watch your argument fly toward {opponent.label}...</p>
+          <Panel title="Crystals Incoming!">
+            <p className="rpg-hint">
+              Your evidence is flying — watch the audience meter after impact.
+            </p>
           </Panel>
         </div>
       )}
@@ -217,12 +244,20 @@ export default function HUD({
           <Panel
             title={`Round ${roundIndex + 1} Complete`}
             actions={
-              <button type="button" className="btn btn-primary" onClick={onAdvance}>
+              <button type="button" className="rpg-suggest-btn rpg-action-btn" onClick={onAdvance}>
                 {roundIndex + 1 >= debateRounds.length ? 'See Final Results' : 'Next Round'}
               </button>
             }
           >
-            <p className="hud-text muted">Nice work! Review your metrics and continue.</p>
+            <p className="rpg-hint">
+              The audience is leaning{' '}
+              {audienceScore > 5
+                ? 'toward Mastery Learning'
+                : audienceScore < -5
+                  ? 'toward Carnegie Units'
+                  : 'toward the center'}
+              . Continue to the next round.
+            </p>
           </Panel>
         </div>
       )}
