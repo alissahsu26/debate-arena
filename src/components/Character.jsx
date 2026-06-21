@@ -1,105 +1,192 @@
 import { useRef, useEffect, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Html } from '@react-three/drei';
+import { Html, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
+import { SkeletonUtils } from 'three-stdlib';
 import { CHARACTERS } from '../data/debateRounds';
+import scholarModel from '../assets/3D-models/scholar.glb?url';
+import wizardModel from '../assets/3D-models/wizard.glb?url';
 
-const HEAD_HEIGHT = 2.05;
-const NAME_LABEL_OFFSET = 0.7;
+const CHARACTER_MODELS = {
+  carnegie: scholarModel,
+  mastery: wizardModel,
+};
+
+// Per-model tuning (carnegie = scholar.glb, mastery = wizard.glb)
+const MODEL_SETTINGS = {
+  carnegie: {
+    targetHeight: 2.5,
+    modelPosition: [0, 0, 0],
+    modelRotation: [0, Math.PI, 0],
+    nameLabelPosition: [0, 0.35, 0],
+  },
+  mastery: {
+    targetHeight: 2.5,
+    modelPosition: [0, 0, 0],
+    modelRotation: [0, Math.PI, 0],
+    nameLabelPosition: [0.3, 0.35, 0],
+  },
+};
+
 const DAMAGE_COLOR = '#ff3333';
 
-function CharacterModel({ type, damageRef }) {
-  const character = CHARACTERS[type];
-  const materialRefs = useRef([]);
+function hasSkinnedMesh(object) {
+  let found = false;
+  object.traverse((child) => {
+    if (child.isSkinnedMesh) found = true;
+  });
+  return found;
+}
 
-  const parts = useMemo(() => {
-    const color = character.color;
-    const shared = [
-      { geometry: 'capsule', args: [0.45, 1.2, 4, 12], position: [0, 0.9, 0], color },
-      { geometry: 'sphere', args: [0.42, 16, 16], position: [0, 2.05, 0], color },
-    ];
+function makeVisibleMaterial(material, materialEntries) {
+  const source = material.clone();
 
-    if (type === 'carnegie') {
-      return [
-        ...shared,
-        {
-          geometry: 'cone',
-          args: [0.12, 0.35, 4],
-          position: [-0.35, 2.35, 0.05],
-          rotation: [0, 0, -0.4],
-          color,
-        },
-        {
-          geometry: 'cone',
-          args: [0.12, 0.35, 4],
-          position: [0.35, 2.35, 0.05],
-          rotation: [0, 0, 0.4],
-          color,
-        },
-        {
-          geometry: 'box',
-          args: [0.5, 0.08, 0.08],
-          position: [0, 2.15, 0.38],
-          color: '#222222',
-        },
-      ];
+  if (source.opacity === 0) {
+    return source;
+  }
+
+  let visibleMaterial = source;
+
+  if (source.map) {
+    visibleMaterial = new THREE.MeshBasicMaterial({
+      map: source.map,
+      transparent: source.transparent,
+      opacity: source.opacity,
+      alphaTest: source.alphaTest ?? 0.01,
+      side: source.side,
+      toneMapped: false,
+      color: source.color?.clone?.() ?? new THREE.Color('#ffffff'),
+    });
+  } else if (source.isMeshBasicMaterial) {
+    visibleMaterial.toneMapped = false;
+  } else {
+    visibleMaterial.toneMapped = false;
+    visibleMaterial.metalness = 0;
+    visibleMaterial.roughness = 1;
+    visibleMaterial.envMapIntensity = 0;
+  }
+
+  materialEntries.push({
+    material: visibleMaterial,
+    emissive: visibleMaterial.emissive?.clone?.() ?? new THREE.Color(),
+    baseColor: visibleMaterial.color?.clone?.() ?? new THREE.Color('#ffffff'),
+  });
+
+  return visibleMaterial;
+}
+
+function applyMaterial(mesh, materialEntries) {
+  if (Array.isArray(mesh.material)) {
+    mesh.material = mesh.material.map((material) => makeVisibleMaterial(material, materialEntries));
+    return;
+  }
+
+  if (mesh.material) {
+    mesh.material = makeVisibleMaterial(mesh.material, materialEntries);
+  }
+}
+
+function centerOnGround(object) {
+  const box = new THREE.Box3().setFromObject(object);
+  object.position.set(
+    -(box.min.x + box.max.x) / 2,
+    -box.min.y,
+    -(box.min.z + box.max.z) / 2
+  );
+}
+
+function scaleObjectUniform(object, factor) {
+  if (hasSkinnedMesh(object)) {
+    object.traverse((child) => {
+      if (child.isBone) {
+        child.position.multiplyScalar(factor);
+      }
+    });
+    object.updateMatrixWorld(true);
+    return;
+  }
+
+  object.scale.setScalar(factor);
+}
+
+function prepareModel(scene, displayScale, type) {
+  const settings = MODEL_SETTINGS[type] ?? MODEL_SETTINGS.mastery;
+  const model = hasSkinnedMesh(scene) ? SkeletonUtils.clone(scene) : scene.clone(true);
+  const materialEntries = [];
+  const targetHeight = settings.targetHeight * displayScale;
+
+  model.traverse((child) => {
+    if (!child.isMesh) return;
+
+    applyMaterial(child, materialEntries);
+
+    if (child.material?.opacity === 0 || (Array.isArray(child.material) && child.material.every((m) => m.opacity === 0))) {
+      child.visible = false;
+      return;
     }
 
-    return [
-      ...shared,
-      {
-        geometry: 'cone',
-        args: [0.25, 0.55, 8],
-        position: [0, 2.55, 0],
-        color: '#4a0080',
-      },
-      {
-        geometry: 'box',
-        args: [0.12, 0.7, 0.12],
-        position: [0.55, 1.1, 0],
-        rotation: [0, 0, -0.5],
-        color: '#228822',
-      },
-    ];
-  }, [character.color, type]);
+    if (child.isSkinnedMesh) {
+      child.frustumCulled = false;
+    }
+  });
 
-  const baseColors = useMemo(
-    () => parts.map((part) => new THREE.Color(part.color)),
-    [parts]
-  );
+  const box = new THREE.Box3().setFromObject(model);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+
+  if (size.y > 0) {
+    scaleObjectUniform(model, targetHeight / size.y);
+  }
+
+  centerOnGround(model);
+  model.position.x += settings.modelPosition[0];
+  model.position.y += settings.modelPosition[1];
+  model.position.z += settings.modelPosition[2];
+
+  return {
+    model,
+    materialEntries,
+    isSkinned: hasSkinnedMesh(model),
+    settings,
+  };
+}
+
+function CharacterModel({ type, damageRef, displayScale }) {
+  const { scene } = useGLTF(CHARACTER_MODELS[type]);
   const flashColor = useMemo(() => new THREE.Color(DAMAGE_COLOR), []);
-  const currentColor = useMemo(() => new THREE.Color(), []);
+  const tempColor = useMemo(() => new THREE.Color(), []);
+
+  const { model, materialEntries, settings } = useMemo(
+    () => prepareModel(scene, displayScale, type),
+    [scene, displayScale, type]
+  );
 
   useFrame(() => {
     const flash = damageRef.current;
-    materialRefs.current.forEach((material, index) => {
-      if (!material) return;
-      currentColor.copy(baseColors[index]).lerp(flashColor, flash);
-      material.color.copy(currentColor);
+    materialEntries.forEach(({ material, emissive, baseColor }) => {
+      if (flash > 0) {
+        if (material.emissive) {
+          tempColor.copy(emissive).lerp(flashColor, flash * 0.85);
+          material.emissive.copy(tempColor).multiplyScalar(flash * 0.75);
+        } else if (material.color) {
+          tempColor.copy(baseColor).lerp(flashColor, flash * 0.85);
+          material.color.copy(tempColor);
+        }
+        return;
+      }
+
+      if (material.emissive) {
+        material.emissive.copy(emissive);
+      }
+      if (material.color) {
+        material.color.copy(baseColor);
+      }
     });
   });
 
   return (
-    <group rotation={[0, Math.PI, 0]}>
-      {parts.map((part, index) => (
-        <mesh
-          key={index}
-          position={part.position}
-          rotation={part.rotation || [0, 0, 0]}
-        >
-          {part.geometry === 'capsule' && <capsuleGeometry args={part.args} />}
-          {part.geometry === 'sphere' && <sphereGeometry args={part.args} />}
-          {part.geometry === 'cone' && <coneGeometry args={part.args} />}
-          {part.geometry === 'box' && <boxGeometry args={part.args} />}
-          <meshBasicMaterial
-            ref={(material) => {
-              materialRefs.current[index] = material;
-            }}
-            color={part.color}
-            toneMapped={false}
-          />
-        </mesh>
-      ))}
+    <group rotation={settings.modelRotation}>
+      <primitive object={model} />
     </group>
   );
 }
@@ -118,6 +205,8 @@ function CharacterInner({
   const entranceRef = useRef(0);
   const damageRef = useRef(0);
   const character = CHARACTERS[type];
+  const modelSettings = MODEL_SETTINGS[type] ?? MODEL_SETTINGS.mastery;
+  const isSkinned = type === 'carnegie';
 
   useEffect(() => {
     if (isDramatic) entranceRef.current = 0;
@@ -140,14 +229,25 @@ function CharacterInner({
     const bob = Math.sin(state.clock.elapsedTime * 2) * (isDramatic ? 0.06 : 0.04);
     const scaleBoost = isDramatic ? 1 + entranceRef.current * 0.05 : 1;
     groupRef.current.position.set(position[0], position[1] + bob, position[2]);
-    groupRef.current.scale.setScalar(scale * scaleBoost);
+
+    // Skinned GLB rigs break when their parent group is scaled.
+    if (!isSkinned) {
+      groupRef.current.scale.setScalar(scale * scaleBoost);
+    } else {
+      groupRef.current.scale.setScalar(1);
+    }
   });
 
-  const labelY = HEAD_HEIGHT + NAME_LABEL_OFFSET;
+  const labelY = modelSettings.targetHeight * scale + modelSettings.nameLabelPosition[1];
+  const labelPosition = [
+    modelSettings.nameLabelPosition[0],
+    labelY,
+    modelSettings.nameLabelPosition[2],
+  ];
 
   return (
     <group ref={groupRef} position={position} rotation={rotation}>
-      <CharacterModel type={type} damageRef={damageRef} />
+      <CharacterModel type={type} damageRef={damageRef} displayScale={scale} />
 
       <pointLight position={[0, 2.5, 2]} intensity={3} color="#ffffff" distance={14} />
 
@@ -155,7 +255,7 @@ function CharacterInner({
         <Html
           center
           distanceFactor={6}
-          position={[0, labelY, 0]}
+          position={labelPosition}
           style={{ pointerEvents: 'none', userSelect: 'none' }}
         >
           <div className={`pkmn-name-bar pkmn-name-bar--${type}`}>
@@ -171,6 +271,9 @@ function CharacterInner({
     </group>
   );
 }
+
+useGLTF.preload(scholarModel);
+useGLTF.preload(wizardModel);
 
 export default function Character(props) {
   return <CharacterInner {...props} />;

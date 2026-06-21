@@ -7,7 +7,13 @@ export default function EvidenceQuiz({ quiz, evidenceLabel, crystalCategory, onA
 
   return (
     <div
-      className={`evidence-quiz-overlay${answered && !answered.correct ? ' evidence-quiz-overlay--failed' : ''}`}
+      className={`evidence-quiz-overlay${
+        answered?.correct
+          ? ' evidence-quiz-overlay--success'
+          : answered && !answered.correct
+            ? ' evidence-quiz-overlay--failed'
+            : ''
+      }`}
     >
       <div className="rpg-box evidence-quiz-box">
         <p className="rpg-heading">Complete the argument</p>
@@ -54,17 +60,22 @@ export default function EvidenceQuiz({ quiz, evidenceLabel, crystalCategory, onA
             );
           })}
         </div>
-        {answered?.correct && (
-          <>
-            <p className="evidence-quiz-result success">
-              Correct! This crystal is ready to launch.
-            </p>
-            <button type="button" className="rpg-suggest-btn build-ready-btn" onClick={onDismiss}>
-              Continue
-            </button>
-          </>
-        )}
       </div>
+
+      {answered?.correct && (
+        <aside className="evidence-quiz-success-popup rpg-box" role="status" aria-live="polite">
+          <p className="evidence-quiz-success-icon" aria-hidden="true">
+            ✓
+          </p>
+          <p className="rpg-heading evidence-quiz-success-title">Crystal ready!</p>
+          <p className="rpg-body evidence-quiz-success-message">
+            Correct! This crystal is ready to launch.
+          </p>
+          <button type="button" className="rpg-suggest-btn rpg-action-btn evidence-quiz-success-btn" onClick={onDismiss}>
+            Continue
+          </button>
+        </aside>
+      )}
 
       {answered && !answered.correct && (
         <aside className="evidence-quiz-fail-popup rpg-box" role="alert" aria-live="assertive">
