@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { searchEvidence } from '../services/evidenceSearch';
 import { getSuggestedSearchPrompt } from '../data/debateRounds';
+import { useFollowUp } from '../context/FollowUpContext';
 
 export const MAX_EVIDENCE_SEARCHES = 3;
 
@@ -19,7 +20,9 @@ export default function BuildYourCase({
   const [query, setQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [searchHint, setSearchHint] = useState(null);
+  const [lastSearchedQuery, setLastSearchedQuery] = useState(null);
   const inputRef = useRef(null);
+  const { openFollowUp } = useFollowUp();
 
   useEffect(() => {
     setQuery('');
@@ -45,6 +48,7 @@ export default function BuildYourCase({
       excludeIds: evidenceInventory.map((e) => e.id),
     });
     onSearch(results);
+    setLastSearchedQuery(query);
     setQuery('');
   };
 
@@ -106,6 +110,27 @@ export default function BuildYourCase({
             {isSearching ? '...' : 'Search'}
           </button>
         </div>
+
+        {isSearching && (
+          <p className="build-searching">
+            Researching evidence
+            <span className="build-searching-dots">
+              <span>.</span>
+              <span>.</span>
+              <span>.</span>
+            </span>
+          </p>
+        )}
+
+        {lastSearchedQuery && !isSearching && (
+          <button
+            type="button"
+            className="rpg-suggest-btn followup-open-btn"
+            onClick={() => openFollowUp(lastSearchedQuery)}
+          >
+            Ask a follow-up question ▸
+          </button>
+        )}
 
         {canReady ? (
           <button type="button" className="rpg-suggest-btn build-ready-btn" onClick={onAdvance}>

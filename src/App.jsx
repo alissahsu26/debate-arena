@@ -2,6 +2,9 @@ import { useReducer, useCallback, useEffect, useRef, Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
 import Arena from './components/Arena';
 import HUD from './components/HUD';
+import FollowUpPanel from './components/FollowUpPanel';
+import FollowUpTab from './components/FollowUpTab';
+import { FollowUpProvider } from './context/FollowUpContext';
 import { INITIAL_AUDIENCE_SCORE, debateRounds } from './data/debateRounds';
 import { buildLaunchPayload, getEvidenceMultiplier } from './services/argumentBuilder';
 import { getEvidenceQuiz } from './services/evidenceQuiz';
@@ -487,6 +490,7 @@ export default function App() {
   const isDramatic = ['firstAttack', 'counterAttack'].includes(state.phase);
 
   return (
+    <FollowUpProvider>
     <div className={`app-root ${isDramatic ? 'arena-vignette' : ''}`}>
       {showArena && state.playerSide && (
         <Canvas
@@ -542,6 +546,10 @@ export default function App() {
           Skip to End
         </button>
       )}
+
+      <FollowUpTab />
+      <FollowUpPanel />
     </div>
+    </FollowUpProvider>
   );
 }
