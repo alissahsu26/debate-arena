@@ -57,20 +57,37 @@ export default function Onboarding({ onSelectSide }) {
   const [answers, setAnswers] = useState({}); // step -> {question, optionId, optionLabel}
   const [questions, setQuestions] = useState({}); // step -> {question, options} (fetched or fallback)
   const inFlightRef = useRef(new Set());
+  // Question 1 doesn't depend on any answer, so both sides' versions can be
+  // requested the instant this screen mounts — long before the player has
+  // picked a champion and clicked "Continue" — so it's ready with no wait.
+  const question1PreloadRef = useRef({ mastery: null, carnegie: null });
+
+  useEffect(() => {
+    for (const side of ['mastery', 'carnegie']) {
+      question1PreloadRef.current[side] = fetchOnboardingQuestion({
+        side,
+        questionNumber: 1,
+        priorAnswers: [],
+      }).then((result) => result ?? QUIZ_QUESTIONS[0]);
+    }
+  }, []);
 
   const ensureQuestionLoaded = (stepNum, priorAnswers) => {
     if (stepNum < 1 || stepNum > TOTAL_QUESTIONS) return;
     if (questions[stepNum] || inFlightRef.current.has(stepNum)) return;
     inFlightRef.current.add(stepNum);
 
-    fetchOnboardingQuestion({ side: selected, questionNumber: stepNum, priorAnswers }).then(
-      (result) => {
-        inFlightRef.current.delete(stepNum);
-        setQuestions((prev) =>
-          prev[stepNum] ? prev : { ...prev, [stepNum]: result ?? QUIZ_QUESTIONS[stepNum - 1] }
-        );
-      }
-    );
+    const pending =
+      stepNum === 1 && question1PreloadRef.current[selected]
+        ? question1PreloadRef.current[selected]
+        : fetchOnboardingQuestion({ side: selected, questionNumber: stepNum, priorAnswers });
+
+    pending.then((result) => {
+      inFlightRef.current.delete(stepNum);
+      setQuestions((prev) =>
+        prev[stepNum] ? prev : { ...prev, [stepNum]: result ?? QUIZ_QUESTIONS[stepNum - 1] }
+      );
+    });
   };
 
   useEffect(() => {
