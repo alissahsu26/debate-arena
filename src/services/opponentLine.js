@@ -27,7 +27,7 @@ export async function fetchOpponentLine({ side, exchangePhase, baseLine, userPro
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ side, exchangePhase, baseLine, userProfile }),
       }),
-      6000
+      12000
     );
     if (!response || !response.ok) {
       reportRagFailure();

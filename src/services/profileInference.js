@@ -26,7 +26,7 @@ export async function inferProfile({ side, answers }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ side, answers }),
       }),
-      4000
+      12000
     );
     if (!response || !response.ok) {
       reportRagFailure();
