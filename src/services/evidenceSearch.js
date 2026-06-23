@@ -1,4 +1,5 @@
 import { debateRounds, getEvidencePool } from '../data/debateRounds';
+import { reportRagFailure, reportRagSuccess } from './ragStatus';
 
 const USE_RAG_API = import.meta.env.VITE_EVIDENCE_API_URL != null;
 
@@ -13,9 +14,10 @@ export async function searchEvidence({
   playerSide,
   exchangePhase = 'attack',
   excludeIds = [],
+  userProfile = null,
 }) {
   if (USE_RAG_API) {
-    return fetchFromRagApi({ query, category, roundIndex, playerSide, exchangePhase });
+    return fetchFromRagApi({ query, category, roundIndex, playerSide, exchangePhase, userProfile });
   }
 
   return filterStaticPool({
@@ -28,19 +30,21 @@ export async function searchEvidence({
   });
 }
 
-async function fetchFromRagApi({ query, category, roundIndex, playerSide, exchangePhase }) {
+async function fetchFromRagApi({ query, category, roundIndex, playerSide, exchangePhase, userProfile }) {
   const baseUrl = import.meta.env.VITE_EVIDENCE_API_URL;
   try {
     const response = await fetch(`${baseUrl}/evidence`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, category, roundIndex, playerSide, exchangePhase }),
+      body: JSON.stringify({ query, category, roundIndex, playerSide, exchangePhase, userProfile }),
     });
     if (!response.ok) throw new Error(`API error: ${response.status}`);
     const data = await response.json();
+    reportRagSuccess();
     return Array.isArray(data.evidence) ? data.evidence.slice(0, 1) : [];
   } catch (err) {
     console.warn('RAG API unavailable, falling back to static pool:', err);
+    reportRagFailure();
     return filterStaticPool({
       query,
       category,

@@ -833,6 +833,54 @@ body,
   }
 }
 
+.quiz-progress {
+  font-size: clamp(6px, 0.8vw, 8px);
+  color: #aaa;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  line-height: 1.8;
+  margin: 0 0 10px;
+}
+
+.quiz-question-title {
+  max-width: 720px;
+  margin: 0 auto 14px;
+}
+
+.quiz-options {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  width: 100%;
+  max-width: 480px;
+  z-index: 1;
+}
+
+.quiz-option {
+  background: #f8f8f8;
+  border: 2px solid #383838;
+  color: #383838;
+  font-family: inherit;
+  font-size: clamp(7px, 0.9vw, 9px);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 12px 16px;
+  cursor: pointer;
+  text-align: left;
+  transition: filter 0.15s ease, transform 0.15s ease;
+}
+
+.quiz-option:hover {
+  filter: brightness(1.08);
+  transform: translateX(2px);
+}
+
+.quiz-option.selected {
+  background: #ffcc00;
+  box-shadow: 0 0 0 2px #ffcc00;
+}
+
 /* Shared retro RPG text box */
 .rpg-box {
   background: #f8f8f8;
@@ -1680,6 +1728,24 @@ body,
 .demo-skip-btn:active {
   transform: translate(1px, 1px);
   box-shadow: 1px 1px 0 #606060;
+}
+
+.rag-status-badge {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 30;
+  pointer-events: none;
+  font-family: 'VT323', 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1;
+  color: #ffcc00;
+  background: #383838;
+  border: 2px solid #ffcc00;
+  padding: 6px 12px;
+  box-shadow: 2px 2px 0 #000;
+  -webkit-font-smoothing: none;
+  font-smooth: never;
 }
 
 /* Pokemon-style crystal materialization reveal */

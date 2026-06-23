@@ -5,9 +5,17 @@ import HUD from './components/HUD';
 import FollowUpPanel from './components/FollowUpPanel';
 import FollowUpTab from './components/FollowUpTab';
 import { FollowUpProvider } from './context/FollowUpContext';
-import { INITIAL_AUDIENCE_SCORE, debateRounds } from './data/debateRounds';
+import {
+  INITIAL_AUDIENCE_SCORE,
+  debateRounds,
+  getOpponentChallenge,
+  getOpponentCounter,
+} from './data/debateRounds';
 import { buildLaunchPayload, getEvidenceMultiplier } from './services/argumentBuilder';
 import { getEvidenceQuiz } from './services/evidenceQuiz';
+import { inferProfile } from './services/profileInference';
+import { fetchOpponentLine } from './services/opponentLine';
+import { useRagOffline } from './services/ragStatus';
 import {
   clampAudienceScore,
   computeLaunchAudienceShift,
@@ -56,6 +64,9 @@ const initialState = {
   quizAnswered: null,
   failedEvidenceIds: [],
   explodingEvidenceId: null,
+  userProfile: null,
+  isProfileLoading: false,
+  opponentLine: null,
 };
 
 function resetExchangeState(state) {
@@ -73,6 +84,7 @@ function resetExchangeState(state) {
     quizAnswered: null,
     failedEvidenceIds: [],
     explodingEvidenceId: null,
+    opponentLine: null,
   };
 }
 
@@ -138,6 +150,8 @@ function gameReducer(state, action) {
         audienceScore: INITIAL_AUDIENCE_SCORE,
         ...resetExchangeState(state),
         exchangePhase: 'attack',
+        userProfile: null,
+        isProfileLoading: Boolean(action.hasAnswers),
       };
     }
 
@@ -335,6 +349,7 @@ function gameReducer(state, action) {
           ...state,
           phase: nextPhase,
           isThrowingCrystals: false,
+          opponentLine: null,
         };
       }
 
@@ -358,7 +373,16 @@ function gameReducer(state, action) {
         throwPowerLocked: false,
         launchPayload: null,
         activeEvidence: [],
+        opponentLine: null,
       };
+    }
+
+    case 'SET_USER_PROFILE': {
+      return { ...state, userProfile: action.profile, isProfileLoading: false };
+    }
+
+    case 'SET_OPPONENT_LINE': {
+      return { ...state, opponentLine: action.line };
     }
 
     case 'REMOVE_COMBAT_TEXT': {
@@ -405,13 +429,21 @@ function CombatText({ item, index, onRemove }) {
 export default function App() {
   const [state, dispatch] = useReducer(gameReducer, initialState);
   const round = debateRounds[state.roundIndex];
+  const ragOffline = useRagOffline();
 
   const handleAdvance = useCallback(() => {
     dispatch({ type: 'ADVANCE_PHASE' });
   }, []);
 
-  const handleSelectSide = useCallback((side) => {
-    dispatch({ type: 'SELECT_SIDE', side });
+  const handleSelectSide = useCallback((side, profileAnswer = {}) => {
+    const { answers = [] } = profileAnswer;
+    dispatch({ type: 'SELECT_SIDE', side, hasAnswers: answers.length > 0 });
+
+    if (answers.length > 0) {
+      inferProfile({ side, answers }).then((profile) => {
+        dispatch({ type: 'SET_USER_PROFILE', profile });
+      });
+    }
   }, []);
 
   const handlePlayAgain = useCallback(() => {
@@ -461,6 +493,45 @@ export default function App() {
   const handleThrowComplete = useCallback(() => {
     dispatch({ type: 'THROW_COMPLETE' });
   }, []);
+
+  useEffect(() => {
+    if (state.phase !== 'firstAttack' && state.phase !== 'counterAttack') return undefined;
+    // isProfileLoading only matters on round 1's firstAttack — by the time later
+    // rounds/counters happen, profile inference has long since resolved.
+    if (state.isProfileLoading || state.opponentLine) return undefined;
+
+    const exchangePhase = state.phase === 'counterAttack' ? 'counter' : 'attack';
+    const baseLine =
+      state.phase === 'counterAttack'
+        ? getOpponentCounter(round, state.playerSide)
+        : getOpponentChallenge(round, state.playerSide);
+
+    let cancelled = false;
+    fetchOpponentLine({
+      side: state.opponentSide,
+      exchangePhase,
+      baseLine,
+      userProfile: state.userProfile,
+    }).then((line) => {
+      // Always resolve to a usable line (falling back to the static baseLine on
+      // failure) so the firstAttack loading gate in HUD.jsx can't hang forever.
+      if (!cancelled) dispatch({ type: 'SET_OPPONENT_LINE', line: line ?? baseLine });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    state.phase,
+    state.roundIndex,
+    state.exchangePhase,
+    state.opponentSide,
+    state.playerSide,
+    state.userProfile,
+    state.isProfileLoading,
+    state.opponentLine,
+    round,
+  ]);
 
   const aimRef = useRef({ x: 0, y: 0 });
 
@@ -545,6 +616,12 @@ export default function App() {
         <button type="button" className="demo-skip-btn" onClick={handleSkipToEnd}>
           Skip to End
         </button>
+      )}
+
+      {ragOffline && (
+        <div className="rag-status-badge" role="status">
+          Offline mode — using static content (RAG_app unreachable)
+        </div>
       )}
 
       <FollowUpTab />

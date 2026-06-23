@@ -2,7 +2,6 @@ import {
   CHARACTERS,
   HYBRID_MESSAGE,
   debateRounds,
-  getOpponentChallenge,
   getOpponentCounter,
 } from '../data/debateRounds';
 import { CATEGORY_COLORS } from '../data/crystalStyles';
@@ -60,6 +59,8 @@ export default function HUD({
     activeQuiz,
     quizAnswered,
     failedEvidenceIds,
+    userProfile,
+    opponentLine,
   } = state;
 
   const opponent = CHARACTERS[opponentSide];
@@ -100,10 +101,7 @@ export default function HUD({
     );
   }
 
-  const challengeText =
-    phase === 'counterAttack'
-      ? getOpponentCounter(round, playerSide)
-      : getOpponentChallenge(round, playerSide);
+  const counterText = opponentLine ?? getOpponentCounter(round, playerSide);
 
   return (
     <div className="hud-overlay">
@@ -117,18 +115,26 @@ export default function HUD({
       </div>
 
       {phase === 'firstAttack' && (
-        <BattleDialog
-          speaker={opponent.label}
-          text={challengeText}
-          subtitle="Opening challenge"
-          onContinue={onAdvance}
-        />
+        opponentLine ? (
+          <BattleDialog
+            speaker={opponent.label}
+            text={opponentLine}
+            subtitle="Opening challenge"
+            onContinue={onAdvance}
+          />
+        ) : (
+          <div className="hud-panel-center">
+            <Panel title={opponent.label}>
+              <p className="rpg-hint">Preparing their opening challenge...</p>
+            </Panel>
+          </div>
+        )
       )}
 
       {phase === 'counterAttack' && (
         <BattleDialog
           speaker={opponent.label}
-          text={challengeText}
+          text={counterText}
           subtitle="Opponent counterargument — press continue to see the audience react"
           onContinue={onAdvance}
         />
@@ -147,6 +153,7 @@ export default function HUD({
             onAdvance={onAdvance}
             isSearching={isSearching}
             pendingEvidenceReveal={pendingEvidenceReveal}
+            userProfile={userProfile}
           />
           {pendingEvidenceReveal && (
             <EvidenceFound

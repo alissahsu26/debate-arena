@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { searchEvidence } from '../services/evidenceSearch';
+import { fetchSearchHint } from '../services/searchHint';
 import { getSuggestedSearchPrompt } from '../data/debateRounds';
 import { useFollowUp } from '../context/FollowUpContext';
 
@@ -16,24 +17,44 @@ export default function BuildYourCase({
   onAdvance,
   isSearching,
   pendingEvidenceReveal,
+  userProfile,
 }) {
   const [query, setQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [searchHint, setSearchHint] = useState(null);
+  const [isHintLoading, setIsHintLoading] = useState(false);
   const [lastSearchedQuery, setLastSearchedQuery] = useState(null);
   const inputRef = useRef(null);
+  const hintRequestRef = useRef(0);
   const { openFollowUp } = useFollowUp();
 
   useEffect(() => {
     setQuery('');
     setSelectedCategory(null);
     setSearchHint(null);
+    setIsHintLoading(false);
   }, [roundIndex, exchangePhase]);
 
-  const handleSuggestedClick = (category) => {
+  const handleSuggestedClick = async (category) => {
     setSelectedCategory(category);
-    setSearchHint(getSuggestedSearchPrompt(roundIndex, playerSide, category, exchangePhase));
+    setSearchHint(null);
+    setIsHintLoading(true);
     inputRef.current?.focus();
+
+    const requestId = ++hintRequestRef.current;
+    const topicSeed =
+      round.opponentChallengeBySide?.[playerSide] ?? round.opponentCounterBySide?.[playerSide];
+    const hint = await fetchSearchHint({
+      side: playerSide,
+      category,
+      exchangePhase,
+      topicSeed,
+      userProfile,
+    });
+    if (requestId !== hintRequestRef.current) return;
+
+    setSearchHint(hint ?? getSuggestedSearchPrompt(roundIndex, playerSide, category, exchangePhase));
+    setIsHintLoading(false);
   };
 
   const handleSearch = async () => {
@@ -46,6 +67,7 @@ export default function BuildYourCase({
       playerSide,
       exchangePhase,
       excludeIds: evidenceInventory.map((e) => e.id),
+      userProfile,
     });
     onSearch(results);
     setLastSearchedQuery(query);
@@ -84,7 +106,9 @@ export default function BuildYourCase({
           ))}
         </div>
 
-        {searchHint && (
+        {isHintLoading && <p className="rpg-hint">Thinking of a search...</p>}
+
+        {searchHint && !isHintLoading && (
           <p className="rpg-search-prompt">
             <span className="rpg-search-prompt-label">Try searching:</span> {searchHint}
           </p>
