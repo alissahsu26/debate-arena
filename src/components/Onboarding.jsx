@@ -57,10 +57,15 @@ export default function Onboarding({ onSelectSide }) {
   const [answers, setAnswers] = useState({}); // step -> {question, optionId, optionLabel}
   const [questions, setQuestions] = useState({}); // step -> {question, options} (fetched or fallback)
   const inFlightRef = useRef(new Set());
+  const answersRef = useRef(answers);
   // Question 1 doesn't depend on any answer, so both sides' versions can be
   // requested the instant this screen mounts — long before the player has
   // picked a champion and clicked "Continue" — so it's ready with no wait.
   const question1PreloadRef = useRef({ mastery: null, carnegie: null });
+
+  useEffect(() => {
+    answersRef.current = answers;
+  }, [answers]);
 
   useEffect(() => {
     for (const side of ['mastery', 'carnegie']) {
@@ -84,6 +89,10 @@ export default function Onboarding({ onSelectSide }) {
 
     pending.then((result) => {
       inFlightRef.current.delete(stepNum);
+      // Don't swap the question out from under the player if they've already
+      // answered it (using whichever version — static or dynamic — was shown
+      // at the time), even if the answer was the static fallback.
+      if (answersRef.current[stepNum]) return;
       setQuestions((prev) =>
         prev[stepNum] ? prev : { ...prev, [stepNum]: result ?? QUIZ_QUESTIONS[stepNum - 1] }
       );
@@ -99,7 +108,9 @@ export default function Onboarding({ onSelectSide }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
-  const currentQuestion = step >= 1 ? questions[step] : null;
+  // Always render *something* immediately — fall back to the static question
+  // while the dynamic one loads, rather than showing a loading state.
+  const currentQuestion = step >= 1 ? questions[step] ?? QUIZ_QUESTIONS[step - 1] : null;
   const currentAnswer = step >= 1 ? answers[step] : null;
 
   const handleSelectOption = (optionId) => {
@@ -170,19 +181,6 @@ export default function Onboarding({ onSelectSide }) {
             </span>
           </button>
         </footer>
-      </div>
-    );
-  }
-
-  if (!currentQuestion) {
-    return (
-      <div className="onboarding">
-        <header className="onboarding-header">
-          <p className="quiz-progress">
-            Question {step} of {TOTAL_QUESTIONS}
-          </p>
-        </header>
-        <p className="rpg-hint">Preparing your next question...</p>
       </div>
     );
   }
